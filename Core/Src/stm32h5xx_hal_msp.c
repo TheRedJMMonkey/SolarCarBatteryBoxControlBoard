@@ -17,7 +17,6 @@
   ******************************************************************************
   */
 /* USER CODE END Header */
-
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 /* USER CODE BEGIN Includes */
@@ -75,6 +74,104 @@ void HAL_MspInit(void)
 }
 
 /**
+  * @brief ADC MSP Initialization
+  * This function configures the hardware resources used in this example
+  * @param hadc: ADC handle pointer
+  * @retval None
+  */
+void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
+  if(hadc->Instance==ADC1)
+  {
+    /* USER CODE BEGIN ADC1_MspInit 0 */
+
+    /* USER CODE END ADC1_MspInit 0 */
+
+  /** Initializes the peripherals clock
+  */
+    PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_ADCDAC;
+    PeriphClkInitStruct.AdcDacClockSelection = RCC_ADCDACCLKSOURCE_HCLK;
+    if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
+    {
+      Error_Handler();
+    }
+
+    /* Peripheral clock enable */
+    __HAL_RCC_ADC_CLK_ENABLE();
+
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+    /**ADC1 GPIO Configuration
+    PA0     ------> ADC1_INP0
+    PA1     ------> ADC1_INP1
+    PB0     ------> ADC1_INP9
+    PB1     ------> ADC1_INP5
+    */
+    GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1;
+    GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1;
+    GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+    /* USER CODE BEGIN ADC1_MspInit 1 */
+
+    /* USER CODE END ADC1_MspInit 1 */
+
+  }
+
+}
+
+/**
+  * @brief ADC MSP De-Initialization
+  * This function freeze the hardware resources used in this example
+  * @param hadc: ADC handle pointer
+  * @retval None
+  */
+void HAL_ADC_MspDeInit(ADC_HandleTypeDef* hadc)
+{
+  if(hadc->Instance==ADC1)
+  {
+    /* USER CODE BEGIN ADC1_MspDeInit 0 */
+
+    /* USER CODE END ADC1_MspDeInit 0 */
+    /* Peripheral clock disable */
+    __HAL_RCC_ADC_CLK_DISABLE();
+
+    /**ADC1 GPIO Configuration
+    PA0     ------> ADC1_INP0
+    PA1     ------> ADC1_INP1
+    PB0     ------> ADC1_INP9
+    PB1     ------> ADC1_INP5
+    */
+    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_0|GPIO_PIN_1);
+
+    HAL_GPIO_DeInit(GPIOB, GPIO_PIN_0|GPIO_PIN_1);
+
+    /* USER CODE BEGIN ADC1_MspDeInit 1 */
+
+    /* USER CODE END ADC1_MspDeInit 1 */
+  }
+
+}
+
+/* ... keep your includes and other MSP code ... */
+
+/* ===================== FDCAN2 pin map (edit here if you move wires) ===================== */
+/* Default: FDCAN2_TX = PB13, FDCAN2_RX = PB5, AF = GPIO_AF9_FDCAN2 */
+#define FDCAN2_TX_GPIO_PORT    GPIOB
+#define FDCAN2_TX_GPIO_PIN     GPIO_PIN_13
+#define FDCAN2_RX_GPIO_PORT    GPIOB
+#define FDCAN2_RX_GPIO_PIN     GPIO_PIN_5
+#define FDCAN2_GPIO_AF         GPIO_AF9_FDCAN2
+/* ======================================================================================== */
+
+/**
   * @brief FDCAN MSP Initialization
   * This function configures the hardware resources used in this example
   * @param hfdcan: FDCAN handle pointer
@@ -84,16 +181,17 @@ void HAL_FDCAN_MspInit(FDCAN_HandleTypeDef* hfdcan)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
-  if(hfdcan->Instance==FDCAN2)
+
+  if (hfdcan->Instance == FDCAN2)
   {
     /* USER CODE BEGIN FDCAN2_MspInit 0 */
-
+    /* If you change the pin macros above to a different GPIO port,
+       make sure to enable that port's clock below. */
     /* USER CODE END FDCAN2_MspInit 0 */
 
-  /** Initializes the peripherals clock
-  */
+    /** Initializes the peripherals clock */
     PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_FDCAN;
-    PeriphClkInitStruct.FdcanClockSelection = RCC_FDCANCLKSOURCE_PLL1Q;
+    PeriphClkInitStruct.FdcanClockSelection  = RCC_FDCANCLKSOURCE_PLL1Q;
     if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
     {
       Error_Handler();
@@ -102,32 +200,38 @@ void HAL_FDCAN_MspInit(FDCAN_HandleTypeDef* hfdcan)
     /* Peripheral clock enable */
     __HAL_RCC_FDCAN_CLK_ENABLE();
 
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-    /**FDCAN2 GPIO Configuration
-    PA0     ------> FDCAN2_RX
-    PB13     ------> FDCAN2_TX
-    */
-    GPIO_InitStruct.Pin = GPIO_PIN_0;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF9_FDCAN2;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+    /* Enable GPIO clocks for the selected TX/RX ports */
+    /* NOTE: Add more __HAL_RCC_GPIOx_CLK_ENABLE() if you move pins to other ports */
+    if (FDCAN2_TX_GPIO_PORT == GPIOA || FDCAN2_RX_GPIO_PORT == GPIOA) __HAL_RCC_GPIOA_CLK_ENABLE();
+    if (FDCAN2_TX_GPIO_PORT == GPIOB || FDCAN2_RX_GPIO_PORT == GPIOB) __HAL_RCC_GPIOB_CLK_ENABLE();
+    if (FDCAN2_TX_GPIO_PORT == GPIOC || FDCAN2_RX_GPIO_PORT == GPIOC) __HAL_RCC_GPIOC_CLK_ENABLE();
+    if (FDCAN2_TX_GPIO_PORT == GPIOD || FDCAN2_RX_GPIO_PORT == GPIOD) __HAL_RCC_GPIOD_CLK_ENABLE();
+    if (FDCAN2_TX_GPIO_PORT == GPIOE || FDCAN2_RX_GPIO_PORT == GPIOE) __HAL_RCC_GPIOE_CLK_ENABLE();
 
-    GPIO_InitStruct.Pin = GPIO_PIN_13;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF9_FDCAN2;
-    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+    /**FDCAN2 GPIO Configuration
+       TX  --> FDCAN2_TX
+       RX  --> FDCAN2_RX
+    */
+    /* TX pin */
+    GPIO_InitStruct.Pin       = FDCAN2_TX_GPIO_PIN;
+    GPIO_InitStruct.Mode      = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull      = GPIO_NOPULL;
+    GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_VERY_HIGH;
+    GPIO_InitStruct.Alternate = FDCAN2_GPIO_AF;
+    HAL_GPIO_Init(FDCAN2_TX_GPIO_PORT, &GPIO_InitStruct);
+
+    /* RX pin */
+    GPIO_InitStruct.Pin       = FDCAN2_RX_GPIO_PIN;
+    GPIO_InitStruct.Mode      = GPIO_MODE_AF_PP;       /* AF is fine for RX on H5 */
+    GPIO_InitStruct.Pull      = GPIO_NOPULL;
+    GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_VERY_HIGH;
+    GPIO_InitStruct.Alternate = FDCAN2_GPIO_AF;
+    HAL_GPIO_Init(FDCAN2_RX_GPIO_PORT, &GPIO_InitStruct);
 
     /* USER CODE BEGIN FDCAN2_MspInit 1 */
-
+    /* If you later use interrupts, enable them here */
     /* USER CODE END FDCAN2_MspInit 1 */
-
   }
-
 }
 
 /**
@@ -138,7 +242,7 @@ void HAL_FDCAN_MspInit(FDCAN_HandleTypeDef* hfdcan)
   */
 void HAL_FDCAN_MspDeInit(FDCAN_HandleTypeDef* hfdcan)
 {
-  if(hfdcan->Instance==FDCAN2)
+  if (hfdcan->Instance == FDCAN2)
   {
     /* USER CODE BEGIN FDCAN2_MspDeInit 0 */
 
@@ -146,19 +250,14 @@ void HAL_FDCAN_MspDeInit(FDCAN_HandleTypeDef* hfdcan)
     /* Peripheral clock disable */
     __HAL_RCC_FDCAN_CLK_DISABLE();
 
-    /**FDCAN2 GPIO Configuration
-    PA0     ------> FDCAN2_RX
-    PB13     ------> FDCAN2_TX
-    */
-    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_0);
-
-    HAL_GPIO_DeInit(GPIOB, GPIO_PIN_13);
+    /**FDCAN2 GPIO Deinit */
+    HAL_GPIO_DeInit(FDCAN2_TX_GPIO_PORT, FDCAN2_TX_GPIO_PIN);
+    HAL_GPIO_DeInit(FDCAN2_RX_GPIO_PORT, FDCAN2_RX_GPIO_PIN);
 
     /* USER CODE BEGIN FDCAN2_MspDeInit 1 */
 
     /* USER CODE END FDCAN2_MspDeInit 1 */
   }
-
 }
 
 /**

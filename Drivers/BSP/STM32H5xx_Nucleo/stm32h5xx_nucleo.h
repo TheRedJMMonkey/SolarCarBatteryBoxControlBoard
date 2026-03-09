@@ -53,9 +53,11 @@ extern "C" {
 #define USE_STM32H5XX_NUCLEO
 #endif /* !defined (USE_STM32H5XX_NUCLEO) */
 
-#if !defined (USE_NUCLEO_144) && !defined (USE_NUCLEO_64) && !defined (USE_NUCLEO_H533RE)
-#error "Board Pin number not defined!! Add USE_NUCLEO_144 or USE_NUCLEO_64 or USE_NUCLEO_H533RE define in conf.h file"
-#endif /* (!defined (USE_NUCLEO_144) && !defined (USE_NUCLEO_64) && !defined (USE_NUCLEO_H533RE)) */
+#if !defined (USE_NUCLEO_144) && !defined (USE_NUCLEO_64) && !defined (USE_NUCLEO_H533RE)&& !defined (USE_NUCLEO_H5E5ZJ)
+#error "Board Pin number not defined!! Add USE_NUCLEO_144 or USE_NUCLEO_64 or USE_NUCLEO_H533RE or \
+        USE_NUCLEO_H5E5ZJ define in conf.h file"
+#endif /* (!defined (USE_NUCLEO_144) && !defined (USE_NUCLEO_64) && !defined (USE_NUCLEO_H533RE) && \
+           !defined (USE_NUCLEO_H5E5ZJ)) */
 
 
 /** @defgroup STM32H5XX_NUCLEO_LOW_LEVEL_Exported_Types LOW LEVEL Exported Types
@@ -64,12 +66,21 @@ extern "C" {
 typedef enum
 {
 #if defined (USE_NUCLEO_144)
+#if defined (USE_NUCLEO_H5E5ZJ) || defined(USE_NUCLEO_H553ZG)
+  LED1 = 0,
+  LED_GREEN = LED1,
+  LED2 = 1,
+  LED_RED = LED2,
+  LED3 = 2,
+  LED_BLUE = LED3,
+#else  
   LED1 = 0,
   LED_GREEN = LED1,
   LED2 = 1,
   LED_YELLOW = LED2,
   LED3 = 2,
   LED_RED = LED3,
+#endif /* USE_NUCLEO_H5E5ZJ || USE_NUCLEO_H553ZG */  
 #else
   LED2 = 0,
   LED_GREEN = LED2,
@@ -156,17 +167,25 @@ typedef struct
 /**
   * @brief STM32H5XX NUCLEO BSP Driver version number V1.1.0
   */
-#define STM32H5XX_NUCLEO_BSP_VERSION_MAIN   (0x01U) /*!< [31:24] main version */
-#define STM32H5XX_NUCLEO_BSP_VERSION_SUB1   (0x01U) /*!< [23:16] sub1 version */
-#define STM32H5XX_NUCLEO_BSP_VERSION_SUB2   (0x00U) /*!< [15:8]  sub2 version */
-#define STM32H5XX_NUCLEO_BSP_VERSION_RC     (0x00U) /*!< [7:0]  release candidate */
+#define STM32H5XX_NUCLEO_BSP_VERSION_MAIN   (0x01UL) /*!< [31:24] main version */
+#define STM32H5XX_NUCLEO_BSP_VERSION_SUB1   (0x01UL) /*!< [23:16] sub1 version */
+#define STM32H5XX_NUCLEO_BSP_VERSION_SUB2   (0x00UL) /*!< [15:8]  sub2 version */
+#define STM32H5XX_NUCLEO_BSP_VERSION_RC     (0x00UL) /*!< [7:0]  release candidate */
 #define STM32H5XX_NUCLEO_BSP_VERSION        ((STM32H5XX_NUCLEO_BSP_VERSION_MAIN << 24)\
                                              |(STM32H5XX_NUCLEO_BSP_VERSION_SUB1 << 16)\
                                              |(STM32H5XX_NUCLEO_BSP_VERSION_SUB2 << 8 )\
                                              |(STM32H5XX_NUCLEO_BSP_VERSION_RC))
 #if defined (USE_NUCLEO_144)
+#if defined (USE_NUCLEO_H5E5ZJ)
+#define STM32H5XX_NUCLEO_BSP_BOARD_NAME     "NUCLEO-H5E5ZJ";
+#define STM32H5XX_NUCLEO_BSP_BOARD_ID       "MB2129";
+#elif defined(USE_NUCLEO_H553ZG)
+#define STM32H5XX_NUCLEO_BSP_BOARD_NAME     "NUCLEO-H553ZG";
+#define STM32H5XX_NUCLEO_BSP_BOARD_ID       "MB2321";
+#else
 #define STM32H5XX_NUCLEO_BSP_BOARD_NAME     "NUCLEO-H563ZI";
 #define STM32H5XX_NUCLEO_BSP_BOARD_ID       "MB1404A";
+#endif /* USE_NUCLEO_H5E5ZJ */
 #else
 #if defined (USE_NUCLEO_H533RE)
 #define STM32H5XX_NUCLEO_BSP_BOARD_NAME     "NUCLEO-H533RE";
@@ -181,6 +200,42 @@ typedef struct
   * @{
   */
 #if defined (USE_NUCLEO_144)
+#if defined (USE_NUCLEO_H5E5ZJ)
+
+#define LED1_PIN                                GPIO_PIN_3
+#define LED1_GPIO_PORT                          GPIOA
+#define LED1_GPIO_CLK_ENABLE()                  __HAL_RCC_GPIOA_CLK_ENABLE()
+#define LED1_GPIO_CLK_DISABLE()                 __HAL_RCC_GPIOA_CLK_DISABLE()
+
+#define LED2_PIN                                GPIO_PIN_0
+#define LED2_GPIO_PORT                          GPIOF
+#define LED2_GPIO_CLK_ENABLE()                  __HAL_RCC_GPIOF_CLK_ENABLE()
+#define LED2_GPIO_CLK_DISABLE()                 __HAL_RCC_GPIOF_CLK_DISABLE()
+
+#define LED3_PIN                                GPIO_PIN_5
+#define LED3_GPIO_PORT                          GPIOE
+#define LED3_GPIO_CLK_ENABLE()                  __HAL_RCC_GPIOE_CLK_ENABLE()
+#define LED3_GPIO_CLK_DISABLE()                 __HAL_RCC_GPIOE_CLK_DISABLE()
+
+#elif defined(USE_NUCLEO_H553ZG)
+
+#define LED1_PIN                                GPIO_PIN_15
+#define LED1_GPIO_PORT                          GPIOD
+#define LED1_GPIO_CLK_ENABLE()                  __HAL_RCC_GPIOD_CLK_ENABLE()
+#define LED1_GPIO_CLK_DISABLE()                 __HAL_RCC_GPIOD_CLK_DISABLE()
+
+#define LED2_PIN                                GPIO_PIN_6
+#define LED2_GPIO_PORT                          GPIOC
+#define LED2_GPIO_CLK_ENABLE()                  __HAL_RCC_GPIOC_CLK_ENABLE()
+#define LED2_GPIO_CLK_DISABLE()                 __HAL_RCC_GPIOC_CLK_DISABLE()
+
+#define LED3_PIN                                GPIO_PIN_0
+#define LED3_GPIO_PORT                          GPIOA
+#define LED3_GPIO_CLK_ENABLE()                  __HAL_RCC_GPIOA_CLK_ENABLE()
+#define LED3_GPIO_CLK_DISABLE()                 __HAL_RCC_GPIOA_CLK_DISABLE()
+
+#else
+
 #define LED1_PIN                                GPIO_PIN_0
 #define LED1_GPIO_PORT                          GPIOB
 #define LED1_GPIO_CLK_ENABLE()                  __HAL_RCC_GPIOB_CLK_ENABLE()
@@ -195,6 +250,7 @@ typedef struct
 #define LED3_GPIO_PORT                          GPIOG
 #define LED3_GPIO_CLK_ENABLE()                  __HAL_RCC_GPIOG_CLK_ENABLE()
 #define LED3_GPIO_CLK_DISABLE()                 __HAL_RCC_GPIOG_CLK_DISABLE()
+#endif /* USE_NUCLEO_H5E5ZJ */
 #else /* defined (USE_NUCLEO_64) */
 #define LED2_PIN                                GPIO_PIN_5
 #define LED2_GPIO_PORT                          GPIOA
@@ -214,7 +270,7 @@ typedef struct
 
 /**
   * @brief Key push-button
-  */
+  */  
 #define BUTTON_USER_PIN                       GPIO_PIN_13
 #define BUTTON_USER_GPIO_PORT                 GPIOC
 #define BUTTON_USER_GPIO_CLK_ENABLE()         __HAL_RCC_GPIOC_CLK_ENABLE()
