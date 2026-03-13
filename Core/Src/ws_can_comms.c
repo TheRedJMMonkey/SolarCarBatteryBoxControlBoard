@@ -46,7 +46,7 @@ static inline FDCAN_TxHeaderTypeDef WS_RequestBaseTxHeader(uint16_t idOffset) {
   FDCAN_TxHeaderTypeDef txHeader = {.Identifier = WS_BASE_ADDR + idOffset,
                                     .IdType = FDCAN_STANDARD_ID,
                                     .TxFrameType = FDCAN_REMOTE_FRAME,
-                                    .DataLength = FDCAN_DLC_BYTES_8,
+                                    .DataLength = FDCAN_DLC_BYTES_0,
                                     .ErrorStateIndicator = FDCAN_ESI_ACTIVE,
                                     .BitRateSwitch = FDCAN_BRS_OFF,
                                     .FDFormat = FDCAN_CLASSIC_CAN,

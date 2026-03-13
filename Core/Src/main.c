@@ -82,7 +82,7 @@ static void MX_ADC1_Init(void);
 FDCAN_TxHeaderTypeDef txHeader;
 FDCAN_RxHeaderTypeDef rxHeader;
 uint8_t txData[64];
-uint8_t rxData[64];
+uint8_t rxData[8];
 
 void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
                                uint32_t RxFifo0ITs) {
@@ -104,7 +104,7 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
     memcpy(&data1, &rxData[0], sizeof(data1));
     memcpy(&data2, &rxData[4], sizeof(data2));
 
-    printf("\n\n%.10lu\n%.8lx\n\n", data1, data2);
+    printf("\n\nID:0x%x/n%.8lx 0x%.8lx\n\n",rxHeader.Identifier, data1, data2);
   }
 }
 
