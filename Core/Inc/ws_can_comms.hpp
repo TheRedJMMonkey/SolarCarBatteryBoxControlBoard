@@ -45,11 +45,7 @@ enum class WaveSculptorMessageID : uint16_t {
  * @brief Enum for WaveSculptor Driver Control Unit message IDs (offsets from
  * base address)
  */
-enum class WaveSculptorDCUMessageID : uint16_t {
-  MotorDrive = 0x01,
-  MotorPower = 0x02,
-  Reset = 0x02
-};
+enum class WaveSculptorDCUMessageID : uint16_t { MotorDrive = 0x01, MotorPower = 0x02, Reset = 0x02 };
 
 /**
  * @brief Class for WaveSculptor motor controller CAN communications
@@ -99,19 +95,16 @@ private:
    * @param idOffset
    * @return FDCAN_TxHeaderTypeDef
    */
-  inline FDCAN_TxHeaderTypeDef
-  dcuBaseTxHeader(WaveSculptorDCUMessageID id) const {
-    FDCAN_TxHeaderTypeDef txHeader = {
-        .Identifier =
-            static_cast<uint32_t>(dcuBaseAddr_ + static_cast<uint16_t>(id)),
-        .IdType = FDCAN_STANDARD_ID,
-        .TxFrameType = FDCAN_DATA_FRAME,
-        .DataLength = FDCAN_DLC_BYTES_8,
-        .ErrorStateIndicator = FDCAN_ESI_ACTIVE,
-        .BitRateSwitch = FDCAN_BRS_OFF,
-        .FDFormat = FDCAN_CLASSIC_CAN,
-        .TxEventFifoControl = FDCAN_NO_TX_EVENTS,
-        .MessageMarker = 0};
+  inline FDCAN_TxHeaderTypeDef dcuBaseTxHeader(WaveSculptorDCUMessageID id) const {
+    FDCAN_TxHeaderTypeDef txHeader = {.Identifier = static_cast<uint32_t>(dcuBaseAddr_ + static_cast<uint16_t>(id)),
+                                      .IdType = FDCAN_STANDARD_ID,
+                                      .TxFrameType = FDCAN_DATA_FRAME,
+                                      .DataLength = FDCAN_DLC_BYTES_8,
+                                      .ErrorStateIndicator = FDCAN_ESI_ACTIVE,
+                                      .BitRateSwitch = FDCAN_BRS_OFF,
+                                      .FDFormat = FDCAN_CLASSIC_CAN,
+                                      .TxEventFifoControl = FDCAN_NO_TX_EVENTS,
+                                      .MessageMarker = 0};
     return txHeader;
   }
 
@@ -121,19 +114,16 @@ private:
    * @param idOffset
    * @return FDCAN_TxHeaderTypeDef
    */
-  inline FDCAN_TxHeaderTypeDef
-  requestBaseTxHeader(WaveSculptorMessageID id) const {
-    FDCAN_TxHeaderTypeDef txHeader = {
-        .Identifier =
-            static_cast<uint32_t>(baseAddr_ + static_cast<uint16_t>(id)),
-        .IdType = FDCAN_STANDARD_ID,
-        .TxFrameType = FDCAN_REMOTE_FRAME,
-        .DataLength = FDCAN_DLC_BYTES_0,
-        .ErrorStateIndicator = FDCAN_ESI_ACTIVE,
-        .BitRateSwitch = FDCAN_BRS_OFF,
-        .FDFormat = FDCAN_CLASSIC_CAN,
-        .TxEventFifoControl = FDCAN_NO_TX_EVENTS,
-        .MessageMarker = 0};
+  inline FDCAN_TxHeaderTypeDef requestBaseTxHeader(WaveSculptorMessageID id) const {
+    FDCAN_TxHeaderTypeDef txHeader = {.Identifier = static_cast<uint32_t>(baseAddr_ + static_cast<uint16_t>(id)),
+                                      .IdType = FDCAN_STANDARD_ID,
+                                      .TxFrameType = FDCAN_REMOTE_FRAME,
+                                      .DataLength = FDCAN_DLC_BYTES_0,
+                                      .ErrorStateIndicator = FDCAN_ESI_ACTIVE,
+                                      .BitRateSwitch = FDCAN_BRS_OFF,
+                                      .FDFormat = FDCAN_CLASSIC_CAN,
+                                      .TxEventFifoControl = FDCAN_NO_TX_EVENTS,
+                                      .MessageMarker = 0};
     return txHeader;
   }
 
@@ -145,11 +135,8 @@ public:
    * @param baseAddr Base address for WaveSculptor messages (default 0x400)
    * @param dcuBaseAddr Base address for DCU messages (default 0x500)
    */
-  WaveSculptor(FDCAN_HandleTypeDef *hfdcan,
-               uint16_t baseAddr = DEFAULT_WS_BASE_ADDR,
-               uint16_t dcuBaseAddr = DEFAULT_WS_DCU_BASE_ADDR);
+  WaveSculptor(FDCAN_HandleTypeDef *hfdcan, uint16_t baseAddr = DEFAULT_WS_BASE_ADDR, uint16_t dcuBaseAddr = DEFAULT_WS_DCU_BASE_ADDR);
 
-  /************************ Drive Control Commands *************************/
   /**
    * @brief WaveSculptor Motor Drive Command
    *
@@ -170,7 +157,6 @@ public:
    */
   void sendReset();
 
-  /***************** Motor Controller Measurement Commands *****************/
   /**
    * @brief Request identification information from the WaveSculptor motor
    * controller
@@ -254,7 +240,6 @@ public:
    */
   void requestSlipSpeedMeasurement();
 
-  /************************** Measurement Parsing **************************/
   /**
    * @brief Parse received measurement data
    *
@@ -263,7 +248,6 @@ public:
    */
   void measurementParser(WaveSculptorMessageID id, uint8_t *rxData);
 
-  /************************** Data Getters **************************/
   uint32_t getSerialNumber() const { return serialNumber_; }
   uint32_t getDeviceID() const { return deviceID_; }
   uint8_t getReceiveErrorCount() const { return receiveErrorCount_; }
@@ -293,7 +277,6 @@ public:
   float getOdometer() const { return odometer_; }
   float getSlipSpeed() const { return slipSpeed_; }
 
-  /************************** Address Getters **************************/
   uint16_t getBaseAddr() const { return baseAddr_; }
   uint16_t getDcuBaseAddr() const { return dcuBaseAddr_; }
 
@@ -304,7 +287,7 @@ public:
    * @return true if ID is within WaveSculptor range
    */
   bool isWaveSculptorMessage(uint32_t id) const {
-    return id >= baseAddr_ && id < baseAddr_ + 0x17;
+    return id >= baseAddr_ && id <= baseAddr_ + static_cast<uint16_t>(WaveSculptorMessageID::SlipSpeedMeasurement);
   }
 };
 
