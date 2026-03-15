@@ -23,9 +23,12 @@
 /* USER CODE BEGIN Includes */
 #include "orion_can_comms.hpp"
 #include "photon3_can_comms.hpp"
+#include "ring_buffer.hpp"
 #include "stm32h5xx_hal_fdcan.h"
 #include "ws_can_comms.hpp"
+#include <algorithm>
 #include <cstring>
+#include <iterator>
 
 /* USER CODE END Includes */
 
@@ -64,6 +67,9 @@ FDCAN_TxHeaderTypeDef txHeader;
 FDCAN_RxHeaderTypeDef rxHeader;
 uint8_t txData[64];
 uint8_t rxData[64];
+
+// Ring buffer for deferred RX processing (16 entries for bursts)
+static RingBuffer<FDCAN_RxMessage, 16> rxBuffer;
 
 WaveSculptor ws(&hfdcan2, 0x400, 0x500);
 Photon3 photon3(&hfdcan2, 0x600);
@@ -191,6 +197,29 @@ int main(void) {
     /* USER CODE BEGIN 3 */
     // Blink to show alive
     BSP_LED_Toggle(LED_GREEN);
+
+    // Process buffered RX messages
+    FDCAN_RxMessage msg;
+    while (rxBuffer.pop(msg)) {
+      // Check if message is from WaveSculptor
+      if (ws.isWaveSculptorMessage(msg.header.Identifier)) {
+        uint16_t offset = msg.header.Identifier - ws.getBaseAddr();
+        ws.measurementParser(static_cast<WaveSculptorMessageID>(offset), msg.data.data());
+      } else if (photon3.isPhoton3Message(msg.header.Identifier)) {
+        uint16_t offset = msg.header.Identifier - photon3.getBaseAddr();
+        photon3.measurementParser(static_cast<Photon3MessageID>(offset), msg.data.data());
+      } else {
+        // Handle other messages or ignore
+#if DEBUG_MESSAGES_ENABLED
+        uint8_t dataLength = FDCAN_DLCToBytes(msg.header.DataLength);
+        printf("Received non-WS message: ID 0x%x, DLC %u, Data: ", (unsigned int)msg.header.Identifier, dataLength);
+        for (uint8_t i = 0; i < dataLength; i++) {
+          printf("%02X ", msg.data[i]);
+        }
+        printf("\n");
+#endif
+      }
+    }
 
     ws.requestStatusInformation();
 
@@ -651,7 +680,7 @@ static void MX_GPIO_Init(void) {
  */
 void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs) {
   if ((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET) {
-    /* Retreive Rx messages from RX FIFO0 */
+    /* Retrieve Rx messages from RX FIFO0 */
     if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &rxHeader, rxData) != HAL_OK) {
       /* Reception Error */
       Error_Handler();
@@ -661,23 +690,13 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
       Error_Handler();
     }
 
-    // Check if message is from WaveSculptor
-    if (ws.isWaveSculptorMessage(rxHeader.Identifier)) {
-      uint16_t offset = rxHeader.Identifier - ws.getBaseAddr();
-      ws.measurementParser(static_cast<WaveSculptorMessageID>(offset), rxData);
-    } else if (photon3.isPhoton3Message(rxHeader.Identifier)) {
-      uint16_t offset = rxHeader.Identifier - photon3.getBaseAddr();
-      photon3.measurementParser(static_cast<Photon3MessageID>(offset), rxData);
+    if (/* rxHeader.Identifier == Cricital Message */ false) {
+      // Immediately handle Critical Message (Switch contactors)
     } else {
-      // Handle other messages or ignore
-#if DEBUG_MESSAGES_ENABLED
-      uint8_t dataLength = FDCAN_DLCToBytes(rxHeader.DataLength);
-      printf("Received non-WS message: ID 0x%x, DLC %u, Data: ", (unsigned int)rxHeader.Identifier, dataLength);
-      for (uint8_t i = 0; i < dataLength; i++) {
-        printf("%02X ", rxData[i]);
-      }
-      printf("\n");
-#endif
+      // Push to buffer for deferred processing
+      FDCAN_RxMessage msg = {rxHeader, {}};
+      std::copy(std::begin(rxData), std::end(rxData), msg.data.begin());
+      rxBuffer.push(msg);
     }
   }
 }
