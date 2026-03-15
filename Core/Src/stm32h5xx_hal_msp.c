@@ -173,8 +173,7 @@ void HAL_FDCAN_MspInit(FDCAN_HandleTypeDef* hfdcan)
   if(hfdcan->Instance==FDCAN2)
   {
     /* USER CODE BEGIN FDCAN2_MspInit 0 */
-    /* If you change the pin macros above to a different GPIO port,
-       make sure to enable that port's clock below. */
+
     /* USER CODE END FDCAN2_MspInit 0 */
 
   /** Initializes the peripherals clock
@@ -222,7 +221,7 @@ void HAL_FDCAN_MspInit(FDCAN_HandleTypeDef* hfdcan)
     HAL_NVIC_SetPriority(FDCAN2_IT0_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(FDCAN2_IT0_IRQn);
     /* USER CODE BEGIN FDCAN2_MspInit 1 */
-    /* If you later use interrupts, enable them here */
+
     /* USER CODE END FDCAN2_MspInit 1 */
 
   }

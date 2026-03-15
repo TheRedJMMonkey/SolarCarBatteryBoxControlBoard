@@ -1,7 +1,7 @@
 /* USER CODE BEGIN Header */
 /**
  ******************************************************************************
- * @file           : main.c
+ * @file           : main.cpp
  * @brief          : Main program body
  ******************************************************************************
  * @attention
@@ -21,12 +21,12 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "stm32h5xx_hal.h"
+#include "mppt_can_comms.hpp"
+#include "orion_can_comms.hpp"
 #include "stm32h5xx_hal_fdcan.h"
-#include "stm32h5xx_nucleo.h"
-#include "ws_can_comms.h"
-#include <stdint.h>
+#include "ws_can_comms.hpp"
 #include <string.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -58,6 +58,13 @@ SPI_HandleTypeDef hspi2;
 SPI_HandleTypeDef hspi4;
 
 /* USER CODE BEGIN PV */
+// FDCAN2 Defines
+FDCAN_TxHeaderTypeDef txHeader;
+FDCAN_RxHeaderTypeDef rxHeader;
+uint8_t txData[64];
+uint8_t rxData[64];
+
+WaveSculptor ws(&hfdcan2, 0x400, 0x500);
 
 /* USER CODE END PV */
 
@@ -78,35 +85,21 @@ static void MX_ADC1_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-// FDCAN2 Defines
-FDCAN_TxHeaderTypeDef txHeader;
-FDCAN_RxHeaderTypeDef rxHeader;
-uint8_t txData[64];
-uint8_t rxData[8];
-
-void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
-                               uint32_t RxFifo0ITs) {
-  if ((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET) {
-    /* Retreive Rx messages from RX FIFO0 */
-    if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &rxHeader, rxData) !=
-        HAL_OK) {
-      /* Reception Error */
-      Error_Handler();
-    }
-    if (HAL_FDCAN_ActivateNotification(hfdcan, FDCAN_IT_RX_FIFO0_NEW_MESSAGE,
-                                       0) != HAL_OK) {
-      /* Notification Error */
-      Error_Handler();
-    }
-
-    // Just for testing purposes
-    uint32_t data1, data2;
-    memcpy(&data1, &rxData[0], sizeof(data1));
-    memcpy(&data2, &rxData[4], sizeof(data2));
-
-    printf("\n\nID:0x%x/n%.8lx 0x%.8lx\n\n",rxHeader.Identifier, data1, data2);
+#if WS_DEBUG_ENABLED
+/**
+ * @brief Get the number of data bytes from FDCAN DLC code
+ * @param dlc FDCAN DLC code
+ * @return Number of data bytes
+ */
+static uint8_t FDCAN_DLCToBytes(uint32_t dlc) {
+  const uint8_t dlcTable[16] = {0, 1,  2,  3,  4,  5,  6,  7,
+                                8, 12, 16, 20, 24, 32, 48, 64};
+  if (dlc <= 15) {
+    return dlcTable[dlc];
   }
+  return 0;
 }
+#endif
 
 /* USER CODE END 0 */
 
@@ -199,11 +192,7 @@ int main(void) {
     // Blink to show alive
     BSP_LED_Toggle(LED_GREEN);
 
-    WS_RequestIdentificationInformation(&hfdcan2);
-    // Should result in the serial number and Prohelion ID being sent to CAN Bus
-    // After the message is received, the expected output is:
-    // <Serial number>
-    // 0x00004003 (Prohelion ID)
+    ws.requestStatusInformation();
 
     HAL_Delay(2500);
     // Blink to show alive
@@ -656,6 +645,47 @@ static void MX_GPIO_Init(void) {
 }
 
 /* USER CODE BEGIN 4 */
+
+/**
+ * @brief Callback function for the interrupt triggered when receiving a message
+ * into Fifo0
+ *
+ * @param hfdcan
+ * @param RxFifo0ITs
+ */
+void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
+                               uint32_t RxFifo0ITs) {
+  if ((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET) {
+    /* Retreive Rx messages from RX FIFO0 */
+    if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &rxHeader, rxData) !=
+        HAL_OK) {
+      /* Reception Error */
+      Error_Handler();
+    }
+    if (HAL_FDCAN_ActivateNotification(hfdcan, FDCAN_IT_RX_FIFO0_NEW_MESSAGE,
+                                       0) != HAL_OK) {
+      /* Notification Error */
+      Error_Handler();
+    }
+
+    // Check if message is from WaveSculptor
+    if (ws.isWaveSculptorMessage(rxHeader.Identifier)) {
+      uint16_t offset = rxHeader.Identifier - ws.getBaseAddr();
+      ws.measurementParser(static_cast<WaveSculptorMessageID>(offset), rxData);
+    } else {
+      // Handle other messages or ignore
+#if WS_DEBUG_ENABLED
+      uint8_t dataLength = FDCAN_DLCToBytes(rxHeader.DataLength);
+      printf("Received non-WS message: ID 0x%x, DLC %u, Data: ",
+             (unsigned int)rxHeader.Identifier, dataLength);
+      for (uint8_t i = 0; i < dataLength; i++) {
+        printf("%02X ", rxData[i]);
+      }
+      printf("\n");
+#endif
+    }
+  }
+}
 
 /* USER CODE END 4 */
 
