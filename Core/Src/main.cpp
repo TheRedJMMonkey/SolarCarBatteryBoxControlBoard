@@ -152,8 +152,13 @@ int main(void) {
   if (HAL_FDCAN_Start(&hfdcan2) != HAL_OK) {
     Error_Handler();
   }
-  // Activate FIFO0 reciept notification
+  // Activate FIFO0 receipt notification
   if (HAL_FDCAN_ActivateNotification(&hfdcan2, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0) != HAL_OK) {
+    /* Notification Error */
+    Error_Handler();
+  }
+  // Activate interrupts for proper Bus-Off recovery
+  if (HAL_FDCAN_ActivateNotification(&hfdcan2, FDCAN_IT_BUS_OFF, 0) != HAL_OK) {
     /* Notification Error */
     Error_Handler();
   }
@@ -672,8 +677,7 @@ static void MX_GPIO_Init(void) {
 /* USER CODE BEGIN 4 */
 
 /**
- * @brief Callback function for the interrupt triggered when receiving a message
- * into Fifo0
+ * @brief Callback function for the interrupt triggered when receiving a message into Fifo0
  *
  * @param hfdcan
  * @param RxFifo0ITs
@@ -690,7 +694,7 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
       Error_Handler();
     }
 
-    if (/* rxHeader.Identifier == Cricital Message */ false) {
+    if (/* rxHeader.Identifier == <Cricital Message ID> */ false) {
       // Immediately handle Critical Message (Switch contactors)
     } else {
       // Push to buffer for deferred processing
@@ -698,6 +702,19 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
       std::copy(std::begin(rxData), std::end(rxData), msg.data.begin());
       rxBuffer.push(msg);
     }
+  }
+}
+
+/**
+ * @brief Callback function for the interrupt triggered when an FDCAN error status occurs
+ *
+ * @param hfdcan
+ * @param ErrorStatusITs
+ */
+void HAL_FDCAN_ErrorStatusCallback(FDCAN_HandleTypeDef *hfdcan, uint32_t ErrorStatusITs) {
+  // If Bus-Off error occurred
+  if ((ErrorStatusITs & FDCAN_IT_BUS_OFF) != 0) {
+    hfdcan->Instance->CCCR &= ~FDCAN_CCCR_INIT; // Clear INIT bit to recover from Bus-Off
   }
 }
 
