@@ -21,12 +21,13 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "orion_can_comms.hpp"
+#include "orion2_can_comms.hpp"
 #include "photon3_can_comms.hpp"
 #include "ring_buffer.hpp"
 #include "stm32h5xx_hal_fdcan.h"
 #include "ws_can_comms.hpp"
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <iterator>
 
@@ -70,9 +71,6 @@ uint8_t rxData[64];
 
 // Ring buffer for deferred RX processing (16 entries for bursts)
 static RingBuffer<FDCAN_RxMessage, 16> rxBuffer;
-
-WaveSculptor ws(&hfdcan2, 0x400, 0x500);
-Photon3 photon3(&hfdcan2, 0x600);
 
 /* USER CODE END PV */
 
@@ -122,8 +120,7 @@ int main(void) {
 
   /* MCU Configuration--------------------------------------------------------*/
 
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick.
-   */
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
 
   /* USER CODE BEGIN Init */
@@ -174,17 +171,19 @@ int main(void) {
   txHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
   txHeader.MessageMarker = 0;
 
+  // Initialize CAN devices
+  WaveSculptor ws(&hfdcan2, 0x400, 0x500);
+  Photon3 photon3(&hfdcan2, 0x600);
+
   /* USER CODE END 2 */
 
   /* Initialize leds */
   BSP_LED_Init(LED_GREEN);
 
-  /* Initialize USER push-button, will be used to trigger an interrupt each time
-   * it's pressed.*/
+  /* Initialize USER push-button, will be used to trigger an interrupt each time it's pressed.*/
   BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
 
-  /* Initialize COM1 port (115200, 8 bits (7-bit data + 1 stop bit), no parity
-   */
+  /* Initialize COM1 port (115200, 8 bits (7-bit data + 1 stop bit), no parity */
   BspCOMInit.BaudRate = 115200;
   BspCOMInit.WordLength = COM_WORDLENGTH_8B;
   BspCOMInit.StopBits = COM_STOPBITS_1;

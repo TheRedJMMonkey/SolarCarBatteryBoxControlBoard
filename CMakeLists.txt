@@ -51,7 +51,7 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     Core/Src/photon3_can_comms.cpp
-    Core/Src/orion_can_comms.cpp
+    Core/Src/orion2_can_comms.cpp
     Core/Src/ws_can_comms.cpp
 )
 

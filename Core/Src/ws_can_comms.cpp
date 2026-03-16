@@ -33,13 +33,13 @@ WaveSculptor::WaveSculptor(FDCAN_HandleTypeDef *hfdcan, uint16_t baseAddr, uint1
 /************************ Drive Control Commands *************************/
 void WaveSculptor::sendMotorDrive(float motorCurrent, float motorRPM) {
 #if WS_DEBUG_ENABLED
-  printf("WS: Sending Motor Drive - Current: %.2f A, RPM: %.2f\n", motorCurrent, motorRPM);
+  printf("WS: Sending Motor Drive - Current: %.2f %%, RPM: %.2f\n", motorCurrent, motorRPM);
 #endif
   FDCAN_TxHeaderTypeDef txHeader = dcuBaseTxHeader(WaveSculptorDCUMessageID::MotorDrive);
 
   uint8_t txData[8] = {0};
-  memcpy(&txData[0], &motorCurrent, sizeof(motorCurrent));
-  memcpy(&txData[4], &motorRPM, sizeof(motorRPM));
+  memcpy(&txData[4], &motorCurrent, sizeof(motorCurrent));
+  memcpy(&txData[0], &motorRPM, sizeof(motorRPM));
 
   if (HAL_FDCAN_AddMessageToTxFifoQ(hfdcan_, &txHeader, txData) != HAL_OK) {
     Error_Handler();
@@ -48,12 +48,12 @@ void WaveSculptor::sendMotorDrive(float motorCurrent, float motorRPM) {
 
 void WaveSculptor::sendMotorPower(float busCurrent) {
 #if WS_DEBUG_ENABLED
-  printf("WS: Sending Motor Power - Bus Current: %.2f A\n", busCurrent);
+  printf("WS: Sending Motor Power - Bus Current: %.2f %%\n", busCurrent);
 #endif
   FDCAN_TxHeaderTypeDef txHeader = dcuBaseTxHeader(WaveSculptorDCUMessageID::MotorPower);
 
   uint8_t txData[8] = {0};
-  memcpy(&txData[0], &busCurrent, sizeof(busCurrent));
+  memcpy(&txData[4], &busCurrent, sizeof(busCurrent));
 
   if (HAL_FDCAN_AddMessageToTxFifoQ(hfdcan_, &txHeader, txData) != HAL_OK) {
     Error_Handler();
@@ -101,6 +101,9 @@ void WaveSculptor::requestStatusInformation() {
 }
 
 void WaveSculptor::requestBusMeasurement() {
+#if WS_DEBUG_ENABLED
+  printf("WS: Requesting Bus Measurement\n");
+#endif
   FDCAN_TxHeaderTypeDef txHeader = requestBaseTxHeader(WaveSculptorMessageID::BusMeasurement);
 
   uint8_t txData[0] = {};
@@ -111,6 +114,9 @@ void WaveSculptor::requestBusMeasurement() {
 }
 
 void WaveSculptor::requestVelocityMeasurement() {
+#if WS_DEBUG_ENABLED
+  printf("WS: Requesting Velocity Measurement\n");
+#endif
   FDCAN_TxHeaderTypeDef txHeader = requestBaseTxHeader(WaveSculptorMessageID::VelocityMeasurement);
 
   uint8_t txData[0] = {};
@@ -121,6 +127,9 @@ void WaveSculptor::requestVelocityMeasurement() {
 }
 
 void WaveSculptor::requestPhaseCurrentMeasurement() {
+#if WS_DEBUG_ENABLED
+  printf("WS: Requesting Phase Current Measurement\n");
+#endif
   FDCAN_TxHeaderTypeDef txHeader = requestBaseTxHeader(WaveSculptorMessageID::PhaseCurrentMeasurement);
 
   uint8_t txData[0] = {};
@@ -131,6 +140,9 @@ void WaveSculptor::requestPhaseCurrentMeasurement() {
 }
 
 void WaveSculptor::requestMotorVoltageVectorMeasurement() {
+#if WS_DEBUG_ENABLED
+  printf("WS: Requesting Motor Voltage Vector Measurement\n");
+#endif
   FDCAN_TxHeaderTypeDef txHeader = requestBaseTxHeader(WaveSculptorMessageID::MotorVoltageVectorMeasurement);
 
   uint8_t txData[0] = {};
@@ -141,6 +153,9 @@ void WaveSculptor::requestMotorVoltageVectorMeasurement() {
 }
 
 void WaveSculptor::requestMotorCurrentVectorMeasurement() {
+#if WS_DEBUG_ENABLED
+  printf("WS: Requesting Current Vector Measurement\n");
+#endif
   FDCAN_TxHeaderTypeDef txHeader = requestBaseTxHeader(WaveSculptorMessageID::MotorCurrentVectorMeasurement);
 
   uint8_t txData[0] = {};
@@ -151,6 +166,9 @@ void WaveSculptor::requestMotorCurrentVectorMeasurement() {
 }
 
 void WaveSculptor::requestMotorBackEMFMeasurement() {
+#if WS_DEBUG_ENABLED
+  printf("WS: Requesting Back-EMF Measurement\n");
+#endif
   FDCAN_TxHeaderTypeDef txHeader = requestBaseTxHeader(WaveSculptorMessageID::MotorBackEMFMeasurement);
 
   uint8_t txData[0] = {};
@@ -161,6 +179,9 @@ void WaveSculptor::requestMotorBackEMFMeasurement() {
 }
 
 void WaveSculptor::request15VRailMeasurement() {
+#if WS_DEBUG_ENABLED
+  printf("WS: Requesting 15V Rail Measurement\n");
+#endif
   FDCAN_TxHeaderTypeDef txHeader = requestBaseTxHeader(WaveSculptorMessageID::VoltageRail15VMeasurement);
 
   uint8_t txData[0] = {};
@@ -171,6 +192,9 @@ void WaveSculptor::request15VRailMeasurement() {
 }
 
 void WaveSculptor::request3V3_1V9RailMeasurement() {
+#if WS_DEBUG_ENABLED
+  printf("WS: Requesting 3.3V & 1.9V Rail Measurement\n");
+#endif
   FDCAN_TxHeaderTypeDef txHeader = requestBaseTxHeader(WaveSculptorMessageID::VoltageRail3V3_1V9Measurement);
 
   uint8_t txData[0] = {};
@@ -181,6 +205,9 @@ void WaveSculptor::request3V3_1V9RailMeasurement() {
 }
 
 void WaveSculptor::requestHeatSinkMotorTempMeasurement() {
+#if WS_DEBUG_ENABLED
+  printf("WS: Requesting Heat Sink & Motor Temperature Measurement\n");
+#endif
   FDCAN_TxHeaderTypeDef txHeader = requestBaseTxHeader(WaveSculptorMessageID::HeatSinkMotorTempMeasurement);
 
   uint8_t txData[0] = {};
@@ -191,6 +218,9 @@ void WaveSculptor::requestHeatSinkMotorTempMeasurement() {
 }
 
 void WaveSculptor::requestDSPTempMeasurement() {
+#if WS_DEBUG_ENABLED
+  printf("WS: Requesting DSP Temp Measurement\n");
+#endif
   FDCAN_TxHeaderTypeDef txHeader = requestBaseTxHeader(WaveSculptorMessageID::DSPTempMeasurement);
 
   uint8_t txData[0] = {};
@@ -201,6 +231,9 @@ void WaveSculptor::requestDSPTempMeasurement() {
 }
 
 void WaveSculptor::requestOdometerBusAhMeasurement() {
+#if WS_DEBUG_ENABLED
+  printf("WS: Requesting Odometer & Bus Ah Measurement\n");
+#endif
   FDCAN_TxHeaderTypeDef txHeader = requestBaseTxHeader(WaveSculptorMessageID::OdometerBusAhMeasurement);
 
   uint8_t txData[0] = {};
@@ -211,6 +244,9 @@ void WaveSculptor::requestOdometerBusAhMeasurement() {
 }
 
 void WaveSculptor::requestSlipSpeedMeasurement() {
+#if WS_DEBUG_ENABLED
+  printf("WS: Requesting Slip Speed Measurement\n");
+#endif
   FDCAN_TxHeaderTypeDef txHeader = requestBaseTxHeader(WaveSculptorMessageID::SlipSpeedMeasurement);
 
   uint8_t txData[0] = {};
