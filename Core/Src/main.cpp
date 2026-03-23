@@ -24,11 +24,11 @@
 #include "orion2_can_comms.hpp"
 #include "photon3_can_comms.hpp"
 #include "ring_buffer.hpp"
-#include "stm32h5xx_hal_fdcan.h"
+#include "stm32h5xx_hal_adc.h"
 #include "ws_can_comms.hpp"
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
-#include <cstring>
 #include <iterator>
 
 /* USER CODE END Includes */
@@ -53,6 +53,9 @@
 
 COM_InitTypeDef BspCOMInit;
 ADC_HandleTypeDef hadc1;
+DMA_NodeTypeDef Node_GPDMA1_Channel0;
+DMA_QListTypeDef List_GPDMA1_Channel0;
+DMA_HandleTypeDef handle_GPDMA1_Channel0;
 
 FDCAN_HandleTypeDef hfdcan2;
 
@@ -72,11 +75,23 @@ uint8_t rxData[64];
 // Ring buffer for deferred RX processing (16 entries for bursts)
 static RingBuffer<FDCAN_RxMessage, 16> rxBuffer;
 
+static const uint8_t NUM_ANALOG_INPUTS = 4;
+
+// Array for ADC values to be transferred into by DMA
+volatile uint16_t analogInputData[NUM_ANALOG_INPUTS];
+
+// Variable to report status of DMA transfer of ADC group regular conversions
+//  0: DMA transfer is not completed
+//  1: DMA transfer is completed
+//  2: DMA transfer has not yet been started yet (initial state)
+volatile uint8_t dmaTransferStatus = 2; // Variable set in DMA interrupt callback
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_GPDMA1_Init(void);
 static void MX_FDCAN2_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_I2C2_Init(void);
@@ -136,6 +151,7 @@ int main(void) {
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_GPDMA1_Init();
   MX_FDCAN2_Init();
   MX_I2C1_Init();
   MX_I2C2_Init();
@@ -175,6 +191,19 @@ int main(void) {
   WaveSculptor ws(&hfdcan2, 0x400, 0x500);
   Photon3 photon3(&hfdcan2, 0x600);
 
+  /* Perform ADC calibration */
+  if (HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED) != HAL_OK) {
+    /* Calibration Error */
+    Error_Handler();
+  }
+
+  /* Start ADC group regular conversion */
+  /* Note: First start with DMA transfer initialization, following ones with basic ADC start. */
+  if (HAL_ADC_Start_DMA(&hadc1, (uint32_t *)analogInputData, NUM_ANALOG_INPUTS) != HAL_OK) {
+    /* Error: ADC conversion start could not be performed */
+    Error_Handler();
+  }
+
   /* USER CODE END 2 */
 
   /* Initialize leds */
@@ -196,9 +225,12 @@ int main(void) {
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1) {
-    /* USER CODE END WHILE */
+    /* Start ADC group regular conversion */
+    if (HAL_ADC_Start(&hadc1) != HAL_OK) {
+      /* Error: ADC conversion start could not be performed */
+      Error_Handler();
+    }
 
-    /* USER CODE BEGIN 3 */
     // Blink to show alive
     BSP_LED_Toggle(LED_GREEN);
 
@@ -225,12 +257,51 @@ int main(void) {
       }
     }
 
-    ws.requestStatusInformation();
+    if (dmaTransferStatus == 1) {
+      // Reset transfer status
+      dmaTransferStatus = 0;
 
-    HAL_Delay(2500);
+      // Process the data
+
+#if DEBUG_MESSAGES_ENABLED
+      printf("\033[H"); // move cursor to home
+
+      for (uint8_t i = 0; i < NUM_ANALOG_INPUTS; i++) {
+        printf("Analog Input %d: %4d\n", i, analogInputData[i]);
+      }
+#endif
+    }
+
+    // HAL_GPIO_WritePin(LIO_1_GPIO_Port, LIO_1_Pin, GPIO_PIN_SET);
+    // HAL_GPIO_WritePin(LIO_2_GPIO_Port, LIO_2_Pin, GPIO_PIN_SET);
+    // HAL_GPIO_WritePin(LIO_3_GPIO_Port, LIO_3_Pin, GPIO_PIN_SET);
+    // HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_SET);
+    // HAL_GPIO_WritePin(LMO_1_GPIO_Port, LMO_1_Pin, GPIO_PIN_SET);
+    // HAL_GPIO_WritePin(LMO_2_GPIO_Port, LMO_2_Pin, GPIO_PIN_SET);
+    // HAL_GPIO_WritePin(LMO_3_GPIO_Port, LMO_3_Pin, GPIO_PIN_SET);
+    // HAL_GPIO_WritePin(LMO_4_GPIO_Port, LMO_4_Pin, GPIO_PIN_SET);
+    // HAL_GPIO_WritePin(LMO_5_GPIO_Port, LMO_5_Pin, GPIO_PIN_SET);
+    // HAL_GPIO_WritePin(LMO_6_GPIO_Port, LMO_6_Pin, GPIO_PIN_SET);
+
+    // HAL_Delay(2500);
     // Blink to show alive
-    BSP_LED_Toggle(LED_GREEN);
-    HAL_Delay(2500);
+    // BSP_LED_Toggle(LED_GREEN);
+
+    // HAL_GPIO_WritePin(LIO_1_GPIO_Port, LIO_1_Pin, GPIO_PIN_RESET);
+    // HAL_GPIO_WritePin(LIO_2_GPIO_Port, LIO_2_Pin, GPIO_PIN_RESET);
+    // HAL_GPIO_WritePin(LIO_3_GPIO_Port, LIO_3_Pin, GPIO_PIN_RESET);
+    // HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
+    // HAL_GPIO_WritePin(LMO_1_GPIO_Port, LMO_1_Pin, GPIO_PIN_RESET);
+    // HAL_GPIO_WritePin(LMO_2_GPIO_Port, LMO_2_Pin, GPIO_PIN_RESET);
+    // HAL_GPIO_WritePin(LMO_3_GPIO_Port, LMO_3_Pin, GPIO_PIN_RESET);
+    // HAL_GPIO_WritePin(LMO_4_GPIO_Port, LMO_4_Pin, GPIO_PIN_RESET);
+    // HAL_GPIO_WritePin(LMO_5_GPIO_Port, LMO_5_Pin, GPIO_PIN_RESET);
+    // HAL_GPIO_WritePin(LMO_6_GPIO_Port, LMO_6_Pin, GPIO_PIN_RESET);
+    HAL_Delay(50);
+
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
@@ -311,11 +382,11 @@ static void MX_ADC1_Init(void) {
   hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV4;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
-  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  hadc1.Init.ScanConvMode = ADC_SCAN_ENABLE;
+  hadc1.Init.EOCSelection = ADC_EOC_SEQ_CONV;
   hadc1.Init.LowPowerAutoWait = DISABLE;
   hadc1.Init.ContinuousConvMode = DISABLE;
-  hadc1.Init.NbrOfConversion = 1;
+  hadc1.Init.NbrOfConversion = 4;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
@@ -329,12 +400,36 @@ static void MX_ADC1_Init(void) {
 
   /** Configure Regular Channel
    */
-  sConfig.Channel = ADC_CHANNEL_1;
+  sConfig.Channel = ADC_CHANNEL_0;
   sConfig.Rank = ADC_REGULAR_RANK_1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
+  sConfig.SamplingTime = ADC_SAMPLETIME_24CYCLES_5;
   sConfig.SingleDiff = ADC_SINGLE_ENDED;
   sConfig.OffsetNumber = ADC_OFFSET_NONE;
   sConfig.Offset = 0;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+   */
+  sConfig.Channel = ADC_CHANNEL_1;
+  sConfig.Rank = ADC_REGULAR_RANK_2;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+   */
+  sConfig.Channel = ADC_CHANNEL_5;
+  sConfig.Rank = ADC_REGULAR_RANK_3;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+   */
+  sConfig.Channel = ADC_CHANNEL_9;
+  sConfig.Rank = ADC_REGULAR_RANK_4;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
     Error_Handler();
   }
@@ -381,6 +476,32 @@ static void MX_FDCAN2_Init(void) {
   /* USER CODE BEGIN FDCAN2_Init 2 */
 
   /* USER CODE END FDCAN2_Init 2 */
+}
+
+/**
+ * @brief GPDMA1 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_GPDMA1_Init(void) {
+
+  /* USER CODE BEGIN GPDMA1_Init 0 */
+
+  /* USER CODE END GPDMA1_Init 0 */
+
+  /* Peripheral clock enable */
+  __HAL_RCC_GPDMA1_CLK_ENABLE();
+
+  /* GPDMA1 interrupt Init */
+  HAL_NVIC_SetPriority(GPDMA1_Channel0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(GPDMA1_Channel0_IRQn);
+
+  /* USER CODE BEGIN GPDMA1_Init 1 */
+
+  /* USER CODE END GPDMA1_Init 1 */
+  /* USER CODE BEGIN GPDMA1_Init 2 */
+
+  /* USER CODE END GPDMA1_Init 2 */
 }
 
 /**
@@ -483,6 +604,12 @@ static void MX_ICACHE_Init(void) {
   /* USER CODE BEGIN ICACHE_Init 1 */
 
   /* USER CODE END ICACHE_Init 1 */
+
+  /** Enable instruction cache (default 2-ways set associative cache)
+   */
+  if (HAL_ICACHE_Enable() != HAL_OK) {
+    Error_Handler();
+  }
   /* USER CODE BEGIN ICACHE_Init 2 */
 
   /* USER CODE END ICACHE_Init 2 */
@@ -597,16 +724,16 @@ static void MX_GPIO_Init(void) {
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LO_10_GPIO_Port, LO_10_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LMO_6_GPIO_Port, LMO_6_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, LO_9_Pin | HO_2_Pin | LO_3_Pin | LO_2_Pin | LO_4_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, LMO_5_Pin | HMO_2_Pin | LIO_3_Pin | LIO_2_Pin | LIO_4_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, LO_6_Pin | LO_5_Pin | LO_8_Pin | LO_7_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, LMO_2_Pin | LMO_1_Pin | LMO_4_Pin | LMO_3_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LO_4B4_Pin | HO_1_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, LIO_1_Pin | HMO_1_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : OI_8_Pin OI_9_Pin OI_5_Pin OI_4_Pin
                            OI_7_Pin */
@@ -621,23 +748,23 @@ static void MX_GPIO_Init(void) {
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(OI_10_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : LO_10_Pin */
-  GPIO_InitStruct.Pin = LO_10_Pin;
+  /*Configure GPIO pin : LMO_6_Pin */
+  GPIO_InitStruct.Pin = LMO_6_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LO_10_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(LMO_6_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LO_9_Pin HO_2_Pin LO_3_Pin LO_2_Pin
-                           LO_4_Pin */
-  GPIO_InitStruct.Pin = LO_9_Pin | HO_2_Pin | LO_3_Pin | LO_2_Pin | LO_4_Pin;
+  /*Configure GPIO pins : LMO_5_Pin HMO_2_Pin LIO_3_Pin LIO_2_Pin
+                           LIO_4_Pin */
+  GPIO_InitStruct.Pin = LMO_5_Pin | HMO_2_Pin | LIO_3_Pin | LIO_2_Pin | LIO_4_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LO_6_Pin LO_5_Pin LO_8_Pin LO_7_Pin */
-  GPIO_InitStruct.Pin = LO_6_Pin | LO_5_Pin | LO_8_Pin | LO_7_Pin;
+  /*Configure GPIO pins : LMO_2_Pin LMO_1_Pin LMO_4_Pin LMO_3_Pin */
+  GPIO_InitStruct.Pin = LMO_2_Pin | LMO_1_Pin | LMO_4_Pin | LMO_3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -661,12 +788,22 @@ static void MX_GPIO_Init(void) {
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(OI_6_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LO_4B4_Pin HO_1_Pin */
-  GPIO_InitStruct.Pin = LO_4B4_Pin | HO_1_Pin;
+  /*Configure GPIO pins : LIO_1_Pin HMO_1_Pin */
+  GPIO_InitStruct.Pin = LIO_1_Pin | HMO_1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI8_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI8_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI14_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI14_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI15_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -674,6 +811,17 @@ static void MX_GPIO_Init(void) {
 }
 
 /* USER CODE BEGIN 4 */
+
+/**
+ * @brief  DMA transfer complete callback
+ * @note   This function is executed when the transfer complete interrupt
+ *         is generated
+ * @retval None
+ */
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
+  // Update DMA transfer status variable
+  dmaTransferStatus = 1;
+}
 
 /**
  * @brief Callback function for the interrupt triggered when receiving a message into Fifo0
@@ -727,6 +875,7 @@ void Error_Handler(void) {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
+  printf("\n\nThere was an error\n");
   while (1) {
   }
   /* USER CODE END Error_Handler_Debug */
