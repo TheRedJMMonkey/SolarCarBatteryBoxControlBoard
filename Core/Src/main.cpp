@@ -21,13 +21,12 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "ina228_i2c_comms.hpp"
 #include "orion2_can_comms.hpp"
 #include "photon3_can_comms.hpp"
 #include "ring_buffer.hpp"
-#include "stm32h5xx_hal_adc.h"
 #include "ws_can_comms.hpp"
 #include <algorithm>
-#include <cstdint>
 #include <cstdio>
 #include <iterator>
 
@@ -66,7 +65,7 @@ SPI_HandleTypeDef hspi2;
 SPI_HandleTypeDef hspi4;
 
 /* USER CODE BEGIN PV */
-// FDCAN2 Defines
+// FDCAN2 defines
 FDCAN_TxHeaderTypeDef txHeader;
 FDCAN_RxHeaderTypeDef rxHeader;
 uint8_t txData[64];
@@ -75,7 +74,11 @@ uint8_t rxData[64];
 // Ring buffer for deferred RX processing (16 entries for bursts)
 static RingBuffer<FDCAN_RxMessage, 16> rxBuffer;
 
-static const uint8_t NUM_ANALOG_INPUTS = 4;
+// I2C defines
+extern INA228 *g_ina228Instance; // Only works with a single INA228
+
+// Analog input defines
+constexpr uint8_t NUM_ANALOG_INPUTS = 4;
 
 // Array for ADC values to be transferred into by DMA
 volatile uint16_t analogInputData[NUM_ANALOG_INPUTS];
@@ -84,7 +87,16 @@ volatile uint16_t analogInputData[NUM_ANALOG_INPUTS];
 //  0: DMA transfer is not completed
 //  1: DMA transfer is completed
 //  2: DMA transfer has not yet been started yet (initial state)
-volatile uint8_t dmaTransferStatus = 2; // Variable set in DMA interrupt callback
+volatile uint8_t adcDMATransferStatus = 2; // Variable set in DMA interrupt callback
+
+// Orion opto inputs are open-drain and active-low (low = permit on).
+volatile bool g_dischargeEnablePermitted = false;    // OI1 -> LIO_4 (Motor)
+volatile bool g_chargeEnablePermitted = false;       // OI2 -> LIO_3 (Solar charge)
+volatile bool g_multipurposeEnablePermitted = false; // OI3 -> LIO_1/LIO_2 (Battery +/-)
+volatile bool g_contactorUpdatePending = true;
+
+constexpr uint32_t CONTACTOR_ON_SPACING_MS = 130U;
+uint32_t g_nextContactorOnAllowedTick = 0U;
 
 /* USER CODE END PV */
 
@@ -113,13 +125,105 @@ static void MX_ADC1_Init(void);
  * @return Number of data bytes
  */
 static uint8_t FDCAN_DLCToBytes(uint32_t dlc) {
-  const uint8_t dlcTable[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64};
+  constexpr uint8_t dlcTable[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64};
   if (dlc <= 15) {
     return dlcTable[dlc];
   }
   return 0;
 }
 #endif
+
+// ============================================================================
+// Functions for Switching Contactors Controlled by Orion BMS 2
+// ============================================================================
+
+/**
+ * @brief Non-blocking sequencer for Orion-controlled contactors.
+ *
+ * Behavior:
+ * - Forces immediate OFF for any de-asserted permit (safe state).
+ * - Turns ON at most one contactor per call.
+ * - Enforces minimum global spacing between ON transitions.
+ * - Preserves ISR-updated pending work to avoid missing edge-driven state changes.
+ *
+ * Safety/race model:
+ * - EXTI ISR owns immediate shutoff on rising edges.
+ * - This function only performs deferred ON sequencing from main-loop context.
+ */
+static void ProcessContactorTurnOnSequencing() {
+  bool dcePermitted;
+  bool cePermitted;
+  bool mpePermitted;
+
+  __disable_irq();
+  // This cycle consumes the pending work flag; ISR can re-assert it at any time.
+  g_contactorUpdatePending = false;
+  dcePermitted = g_dischargeEnablePermitted;
+  cePermitted = g_chargeEnablePermitted;
+  mpePermitted = g_multipurposeEnablePermitted;
+  __enable_irq();
+
+  // Rising edge de-assertions should already switch off in ISR; this keeps state coherent.
+  if (!mpePermitted) {
+    // Turning off the contactors is always safe, so no need to write the global state
+    HAL_GPIO_WritePin(LIO_1_GPIO_Port, LIO_1_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(LIO_2_GPIO_Port, LIO_2_Pin, GPIO_PIN_RESET);
+  }
+  if (!cePermitted) {
+    // Turning off the contactors is always safe, so no need to write the global state
+    HAL_GPIO_WritePin(LIO_3_GPIO_Port, LIO_3_Pin, GPIO_PIN_RESET);
+  }
+  if (!dcePermitted) {
+    // Turning off the contactors is always safe, so no need to write the global state
+    HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
+  }
+
+  const uint32_t now = HAL_GetTick();
+  if (static_cast<int32_t>(now - g_nextContactorOnAllowedTick) < 0) {
+    g_contactorUpdatePending = true;
+    return;
+  }
+
+  // Turn on at most one contactor per call; enforce minimum spacing globally.
+  if (mpePermitted && (HAL_GPIO_ReadPin(LIO_1_GPIO_Port, LIO_1_Pin) == GPIO_PIN_RESET)) {
+    // Re-read permit inside the critical section so the GPIO write cannot use stale authorization.
+    __disable_irq();
+    HAL_GPIO_WritePin(LIO_1_GPIO_Port, LIO_1_Pin, static_cast<GPIO_PinState>(g_multipurposeEnablePermitted));
+    __enable_irq();
+    g_nextContactorOnAllowedTick = now + CONTACTOR_ON_SPACING_MS;
+  } else if (mpePermitted && (HAL_GPIO_ReadPin(LIO_2_GPIO_Port, LIO_2_Pin) == GPIO_PIN_RESET)) {
+    // Re-read permit inside the critical section so the GPIO write cannot use stale authorization.
+    __disable_irq();
+    HAL_GPIO_WritePin(LIO_2_GPIO_Port, LIO_2_Pin, static_cast<GPIO_PinState>(g_multipurposeEnablePermitted));
+    __enable_irq();
+    g_nextContactorOnAllowedTick = now + CONTACTOR_ON_SPACING_MS;
+  } else if (cePermitted && (HAL_GPIO_ReadPin(LIO_3_GPIO_Port, LIO_3_Pin) == GPIO_PIN_RESET)) {
+    // Re-read permit inside the critical section so the GPIO write cannot use stale authorization.
+    __disable_irq();
+    HAL_GPIO_WritePin(LIO_3_GPIO_Port, LIO_3_Pin, static_cast<GPIO_PinState>(g_chargeEnablePermitted));
+    __enable_irq();
+    g_nextContactorOnAllowedTick = now + CONTACTOR_ON_SPACING_MS;
+  } else if (dcePermitted && (HAL_GPIO_ReadPin(LIO_4_GPIO_Port, LIO_4_Pin) == GPIO_PIN_RESET)) {
+    // Re-read permit inside the critical section so the GPIO write cannot use stale authorization.
+    __disable_irq();
+    HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, static_cast<GPIO_PinState>(g_dischargeEnablePermitted));
+    __enable_irq();
+    g_nextContactorOnAllowedTick = now + CONTACTOR_ON_SPACING_MS;
+  }
+
+  __disable_irq();
+  dcePermitted = g_dischargeEnablePermitted;
+  cePermitted = g_chargeEnablePermitted;
+  mpePermitted = g_multipurposeEnablePermitted;
+  __enable_irq();
+  // Preserve any ISR update that may have occurred while this function was running.
+  g_contactorUpdatePending =
+      g_contactorUpdatePending ||
+      ((mpePermitted && (HAL_GPIO_ReadPin(LIO_1_GPIO_Port, LIO_1_Pin) == GPIO_PIN_RESET)) ||
+       (mpePermitted && (HAL_GPIO_ReadPin(LIO_2_GPIO_Port, LIO_2_Pin) == GPIO_PIN_RESET)) ||
+       (cePermitted && (HAL_GPIO_ReadPin(LIO_3_GPIO_Port, LIO_3_Pin) == GPIO_PIN_RESET)) ||
+       (dcePermitted && (HAL_GPIO_ReadPin(LIO_4_GPIO_Port, LIO_4_Pin) == GPIO_PIN_RESET)));
+}
 
 /* USER CODE END 0 */
 
@@ -191,6 +295,15 @@ int main(void) {
   WaveSculptor ws(&hfdcan2, 0x400, 0x500);
   Photon3 photon3(&hfdcan2, 0x600);
 
+  // Initialize I2C devices
+  INA228 pwrMonitor(&hi2c1);
+  // Configuration is blocking, but all other comms are non-blocking
+  pwrMonitor.setConfig();                        // Use default config (Range0)
+  pwrMonitor.setADCConfig();                     // Use default config (TempShuntBusCont, us1052, Avg1)
+  pwrMonitor.setShuntCalibration(0.007f, 12.5f); // Configure according to hardware
+
+  pwrMonitor.verifyDevicePresent();
+
   /* Perform ADC calibration */
   if (HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED) != HAL_OK) {
     /* Calibration Error */
@@ -203,6 +316,12 @@ int main(void) {
     /* Error: ADC conversion start could not be performed */
     Error_Handler();
   }
+
+  g_dischargeEnablePermitted = (HAL_GPIO_ReadPin(OI_1_GPIO_Port, OI_1_Pin) == GPIO_PIN_RESET);
+  g_chargeEnablePermitted = (HAL_GPIO_ReadPin(OI_2_GPIO_Port, OI_2_Pin) == GPIO_PIN_RESET);
+  g_multipurposeEnablePermitted = (HAL_GPIO_ReadPin(OI_3_GPIO_Port, OI_3_Pin) == GPIO_PIN_RESET);
+  g_nextContactorOnAllowedTick = HAL_GetTick();
+  g_contactorUpdatePending = true;
 
   /* USER CODE END 2 */
 
@@ -225,16 +344,39 @@ int main(void) {
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1) {
+    if (g_contactorUpdatePending) {
+      // Run deferred sequencing in main-loop context; ISR handles immediate shutoff.
+      ProcessContactorTurnOnSequencing();
+    }
+
+    // Blink to show alive
+    BSP_LED_Toggle(LED_GREEN);
+
     /* Start ADC group regular conversion */
     if (HAL_ADC_Start(&hadc1) != HAL_OK) {
       /* Error: ADC conversion start could not be performed */
       Error_Handler();
     }
 
-    // Blink to show alive
-    BSP_LED_Toggle(LED_GREEN);
+    // Start pwrMonitor I2C read
+    pwrMonitor.startReadAllMeasurements();
 
-    // Process buffered RX messages
+    // Retrieve pwrMonitor data if it is ready
+    if (pwrMonitor.isDataReady()) {
+      float busV = pwrMonitor.getBusVoltage();     // in Volts
+      float shuntV = pwrMonitor.getShuntVoltage(); // in Volts
+      float current = pwrMonitor.getCurrent();     // in Amperes
+      float power = pwrMonitor.getPower();         // in Watts
+      float temp = pwrMonitor.getTemperature();    // in Celsius
+
+      // Reset dataReady_ after retrieving
+      pwrMonitor.setDataReady(false);
+#if DEBUG_MESSAGES_ENABLED
+      printf("Power Monitor: Measurement complete - Vshunt=%.6f, Vbus=%.2f, I=%.3f, P=%.3f, Tdie=%.1f\n", shuntV, busV, current, power, temp);
+#endif
+    }
+
+    // Process buffered CAN RX messages
     FDCAN_RxMessage msg;
     while (rxBuffer.pop(msg)) {
       // Check if message is from WaveSculptor
@@ -257,9 +399,9 @@ int main(void) {
       }
     }
 
-    if (dmaTransferStatus == 1) {
+    if (adcDMATransferStatus == 1) {
       // Reset transfer status
-      dmaTransferStatus = 0;
+      adcDMATransferStatus = 0;
 
       // Process the data
 
@@ -772,14 +914,14 @@ static void MX_GPIO_Init(void) {
 
   /*Configure GPIO pins : OI_2_Pin OI_1_Pin */
   GPIO_InitStruct.Pin = OI_2_Pin | OI_1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pin : OI_3_Pin */
   GPIO_InitStruct.Pin = OI_3_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(OI_3_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : OI_6_Pin */
@@ -811,17 +953,6 @@ static void MX_GPIO_Init(void) {
 }
 
 /* USER CODE BEGIN 4 */
-
-/**
- * @brief  DMA transfer complete callback
- * @note   This function is executed when the transfer complete interrupt
- *         is generated
- * @retval None
- */
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
-  // Update DMA transfer status variable
-  dmaTransferStatus = 1;
-}
 
 /**
  * @brief Callback function for the interrupt triggered when receiving a message into Fifo0
@@ -865,6 +996,70 @@ void HAL_FDCAN_ErrorStatusCallback(FDCAN_HandleTypeDef *hfdcan, uint32_t ErrorSt
   }
 }
 
+/**
+ * @brief Callback function for the interrupt triggered when an I2C Memory Read (IT or DMA) is complete
+ *
+ * @param hi2c
+ */
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c) {
+  if (g_ina228Instance) {
+    g_ina228Instance->onI2CMemRxComplete(hi2c);
+  }
+}
+
+/**
+ * @brief  DMA transfer complete callback
+ * @note   This function is executed when the transfer complete interrupt is generated
+ * @retval None
+ */
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
+  // Update DMA transfer status variable
+  adcDMATransferStatus = 1;
+}
+
+/**
+ * @brief EXTI callback for Orion opto-input permit edges.
+ *
+ * Inputs are active-low (open-drain with pull-up):
+ * - low  = permit ON
+ * - high = revoke permit
+ *
+ * Rising edge handling is safety-critical: mapped contactors are forced OFF immediately,
+ * then deferred sequencing is requested for main-loop reconciliation.
+ *
+ * @param GPIO_Pin EXTI source pin number provided by HAL.
+ */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+  switch (GPIO_Pin) {
+  case OI_1_Pin:
+    g_dischargeEnablePermitted = (HAL_GPIO_ReadPin(OI_1_GPIO_Port, OI_1_Pin) == GPIO_PIN_RESET);
+    if (!g_dischargeEnablePermitted) {
+      HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
+    }
+    g_contactorUpdatePending = true;
+    break;
+
+  case OI_2_Pin:
+    g_chargeEnablePermitted = (HAL_GPIO_ReadPin(OI_2_GPIO_Port, OI_2_Pin) == GPIO_PIN_RESET);
+    if (!g_chargeEnablePermitted) {
+      HAL_GPIO_WritePin(LIO_3_GPIO_Port, LIO_3_Pin, GPIO_PIN_RESET);
+    }
+    g_contactorUpdatePending = true;
+    break;
+
+  case OI_3_Pin:
+    g_multipurposeEnablePermitted = (HAL_GPIO_ReadPin(OI_3_GPIO_Port, OI_3_Pin) == GPIO_PIN_RESET);
+    if (!g_multipurposeEnablePermitted) {
+      HAL_GPIO_WritePin(LIO_1_GPIO_Port, LIO_1_Pin, GPIO_PIN_RESET);
+      HAL_GPIO_WritePin(LIO_2_GPIO_Port, LIO_2_Pin, GPIO_PIN_RESET);
+    }
+    g_contactorUpdatePending = true;
+    break;
+
+  default:
+    break;
+  }
+}
 /* USER CODE END 4 */
 
 /**

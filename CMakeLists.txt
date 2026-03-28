@@ -53,6 +53,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/photon3_can_comms.cpp
     Core/Src/orion2_can_comms.cpp
     Core/Src/ws_can_comms.cpp
+    Core/Src/ina228_i2c_comms.cpp
 )
 
 # Add include paths
