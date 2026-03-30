@@ -382,10 +382,10 @@ int main(void) {
       // Check if message is from WaveSculptor
       if (ws.isWaveSculptorMessage(msg.header.Identifier)) {
         uint16_t offset = msg.header.Identifier - ws.getBaseAddr();
-        ws.measurementParser(static_cast<WaveSculptorMessageID>(offset), msg.data.data());
+        ws.parseMeasurement(static_cast<WaveSculptor::MessageID>(offset), msg.data.data());
       } else if (photon3.isPhoton3Message(msg.header.Identifier)) {
         uint16_t offset = msg.header.Identifier - photon3.getBaseAddr();
-        photon3.measurementParser(static_cast<Photon3MessageID>(offset), msg.data.data());
+        photon3.parseMeasurement(static_cast<Photon3::MessageID>(offset), msg.data.data());
       } else {
         // Handle other messages or ignore
 #if DEBUG_MESSAGES_ENABLED

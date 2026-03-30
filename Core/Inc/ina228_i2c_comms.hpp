@@ -51,16 +51,16 @@ public:
     DeviceID = 0x3F
   };
 
-  static constexpr uint8_t regSize(Register r) {
+  static constexpr uint8_t regSize(INA228::Register r) {
     switch (r) {
-    case Register::ShuntVoltage:
-    case Register::BusVoltage:
-    case Register::Current:
-    case Register::Power:
+    case INA228::Register::ShuntVoltage:
+    case INA228::Register::BusVoltage:
+    case INA228::Register::Current:
+    case INA228::Register::Power:
       return 3; // 24-bit
 
-    case Register::Energy:
-    case Register::Charge:
+    case INA228::Register::Energy:
+    case INA228::Register::Charge:
       return 5; // 40-bit
 
     default:
@@ -149,16 +149,18 @@ public:
    * @param avg Averaging mode
    * @return HAL_StatusTypeDef
    */
-  HAL_StatusTypeDef setADCConfig(OperatingMode mode = OperatingMode::TempShuntBusCont, ConversionTime busConvTime = ConversionTime::us1052,
-                                 ConversionTime shuntConvTime = ConversionTime::us1052, ConversionTime tempConvTime = ConversionTime::us1052,
-                                 Averaging avg = Averaging::Avg1);
+  HAL_StatusTypeDef setADCConfig(INA228::OperatingMode mode = INA228::OperatingMode::TempShuntBusCont,
+                                 INA228::ConversionTime busConvTime = INA228::ConversionTime::us1052,
+                                 INA228::ConversionTime shuntConvTime = INA228::ConversionTime::us1052,
+                                 INA228::ConversionTime tempConvTime = INA228::ConversionTime::us1052,
+                                 INA228::Averaging avg = INA228::Averaging::Avg1);
 
   /**
    * @brief Configure the INA228 CONFIG register using helper constants (blocking)
    * @param adcrange ADC range
    * @return HAL_StatusTypeDef
    */
-  HAL_StatusTypeDef setConfig(ADCRange adcrange = ADCRange::Range0);
+  HAL_StatusTypeDef setConfig(INA228::ADCRange adcrange = INA228::ADCRange::Range0);
 
   /**
    * @brief Calculate and write the shunt calibration value (blocking)
@@ -236,7 +238,7 @@ private:
    *
    * @tparam R Register address
    */
-  template <Register R> struct RegTraits;
+  template <INA228::Register R> struct RegTraits;
 
   /**
    * @brief Extend the sign bit of a smaller integer inside a uint64_t to an int64_t
@@ -245,7 +247,7 @@ private:
    * @param x Value to extend
    * @return int64_t
    */
-  template <unsigned Bits> static inline int64_t signExtend(uint64_t x);
+  template <unsigned Bits> static int64_t signExtend(uint64_t x);
 
   /**
    * @brief Convert raw bytes to signed/unsigned value based on register traits
@@ -254,7 +256,7 @@ private:
    * @param data Pointer to store the read value
    * @return RegTraits<R>::RegType
    */
-  template <Register R> typename RegTraits<R>::RegType bytesToValue(const uint8_t *data);
+  template <INA228::Register R> typename RegTraits<R>::RegType bytesToValue(const uint8_t *data);
 
   /**
    * @brief Convert raw register value to bus voltage in volts
@@ -329,7 +331,7 @@ template <> struct INA228::RegTraits<INA228::Register::Temperature> {
   using RegType = int16_t;
 };
 
-template <unsigned Bits> inline int64_t INA228::signExtend(uint64_t x) {
+template <unsigned Bits> int64_t INA228::signExtend(uint64_t x) {
   constexpr uint64_t shift = 64 - Bits;
 
   // Right-shift on signed integral types is always arithemetic shift since C++20. Implementation defined behavior before C++20.
