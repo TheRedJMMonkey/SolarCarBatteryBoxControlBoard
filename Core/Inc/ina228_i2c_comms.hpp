@@ -14,6 +14,10 @@
 
 #include "stm32h5xx_hal.h"
 #include "stm32h5xx_hal_i2c.h"
+#include "uart_guard.hpp"
+#include <bit>
+#include <cstdio>
+#include <cstring>
 
 // Debug toggle - set to true to enable debug prints, false to disable
 #define INA228_DEBUG_ENABLED true
@@ -50,23 +54,6 @@ public:
     ManufacturerID = 0x3E,
     DeviceID = 0x3F
   };
-
-  static constexpr uint8_t regSize(INA228::Register r) {
-    switch (r) {
-    case INA228::Register::ShuntVoltage:
-    case INA228::Register::BusVoltage:
-    case INA228::Register::Current:
-    case INA228::Register::Power:
-      return 3; // 24-bit
-
-    case INA228::Register::Energy:
-    case INA228::Register::Charge:
-      return 5; // 40-bit
-
-    default:
-      return 2; // 16-bit
-    }
-  }
 
   /**
    * @brief Operating modes (ADC_CONFIG bits 15-12)
@@ -200,31 +187,30 @@ private:
     ReadingBusVoltage = 2,
     ReadingCurrent = 3,
     ReadingPower = 4,
-    ReadingTemperature = 5,
-    Complete = 6
+    ReadingTemperature = 5
   };
 
   I2C_HandleTypeDef *hi2c_;
   uint8_t i2cAddr_;
 
   // Read state machine
-  ReadState readState_ = ReadState::Idle;
+  volatile ReadState readState_ = ReadState::Idle;
   uint8_t rxBuffer_[5] = {}; // Holds up to 5 bytes for register reads
-  bool dataReady_ = false;
+  volatile bool dataReady_ = false;
 
   // Measurement data (stored as floats for ease of use)
-  float busVoltage_ = 0.0f;   // Bus voltage in V
-  float shuntVoltage_ = 0.0f; // Shunt voltage in V
-  float current_ = 0.0f;      // Current in A
-  float power_ = 0.0f;        // Power in W
-  float temperature_ = 0.0f;  // Temperature in °C
+  volatile float busVoltage_ = 0.0f;   // Bus voltage in V
+  volatile float shuntVoltage_ = 0.0f; // Shunt voltage in V
+  volatile float current_ = 0.0f;      // Current in A
+  volatile float power_ = 0.0f;        // Power in W
+  volatile float temperature_ = 0.0f;  // Temperature in °C
 
   // Calibration factors (computed once during setup)
   float currentLSB_ = 0.0f;           // Current LSB in A/bit
   float powerLSB_ = 0.0f;             // Power LSB in W/bit
   float shuntVoltageLSB_ = 312.5e-9f; // Shunt voltage LSB in V/bit
 
-  HAL_StatusTypeDef lastError_ = HAL_OK; // Track last I2C error
+  volatile HAL_StatusTypeDef lastError_ = HAL_OK; // Track last I2C error
 
   /**
    * @brief Internal: Process next read in state machine
@@ -341,11 +327,22 @@ template <unsigned Bits> int64_t INA228::signExtend(uint64_t x) {
 template <INA228::Register R> typename INA228::RegTraits<R>::RegType INA228::bytesToValue(const uint8_t *data) {
   constexpr uint8_t size = RegTraits<R>::size;
   uint64_t raw = 0;
-  for (uint8_t i = 0; i < size; i++)
-    raw = (raw << 8) | data[i];
-
+  memcpy(&raw, data, size);
+#if INA228_DEBUG_ENABLED
+  {
+    UartGuard guard;
+    printf("INA228: Raw bytes=0x%016llX\n", raw);
+  }
+#endif
+  raw = std::byteswap(raw) >> 8 * (sizeof(raw) - size); // Swap byte order from big to little endian and shift right to re-align data
+#if INA228_DEBUG_ENABLED
+  {
+    UartGuard guard;
+    printf("INA228: Raw swapped=0x%016llX\n", raw);
+  }
+#endif
   if constexpr (RegTraits<R>::isSigned) {
-    int64_t signedValue = signExtend<RegTraits<R>::size * 8>(raw);
+    int64_t signedValue = signExtend<size * 8>(raw);
     return static_cast<typename RegTraits<R>::RegType>(signedValue);
   } else {
     return static_cast<typename RegTraits<R>::RegType>(raw);

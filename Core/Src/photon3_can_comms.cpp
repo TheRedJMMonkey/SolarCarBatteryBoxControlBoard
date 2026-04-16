@@ -12,6 +12,7 @@
  */
 
 #include "photon3_can_comms.hpp"
+#include "uart_guard.hpp"
 #include <cstdio>
 #include <cstring>
 
@@ -33,8 +34,11 @@ HAL_StatusTypeDef Photon3::parseMeasurement(Photon3::MessageID id, const uint8_t
     memcpy(&ch1BatteryVoltage_, &rxData[4], sizeof(ch1BatteryVoltage_)); // 10mV per unit
     memcpy(&ch1UnitTemp_, &rxData[6], sizeof(ch1UnitTemp_));             // 10m°C per unit
 #if PHOTON3_DEBUG_ENABLED
-    printf("Photon3: Channel 1 - ArrayVolts: %.2f V, ArrayCurrent: %.2f A, BatVolts: %.2f V, Temp: %.2f °C\n", ch1ArrayVoltage_ * 0.01f,
-           ch1ArrayCurrent_ * 0.001f, ch1BatteryVoltage_ * 0.01f, ch1UnitTemp_ * 0.01f);
+    {
+      UartGuard guard;
+      printf("Photon3: Channel 1 - ArrayVolts: %.2f V, ArrayCurrent: %.2f A, BatVolts: %.2f V, Temp: %.2f °C\n", ch1ArrayVoltage_ * 0.01f,
+             ch1ArrayCurrent_ * 0.001f, ch1BatteryVoltage_ * 0.01f, ch1UnitTemp_ * 0.01f);
+    }
 #endif
     break;
   }
@@ -45,8 +49,11 @@ HAL_StatusTypeDef Photon3::parseMeasurement(Photon3::MessageID id, const uint8_t
     memcpy(&ch2BatteryVoltage_, &rxData[4], sizeof(ch2BatteryVoltage_)); // 10mV per unit
     memcpy(&ch2UnitTemp_, &rxData[6], sizeof(ch2UnitTemp_));             // 10m°C per unit
 #if PHOTON3_DEBUG_ENABLED
-    printf("Photon3: Channel 2 - ArrayVolts: %.2f V, ArrayCurrent: %.2f A, BatVolts: %.2f V, Temp: %.2f °C\n", ch2ArrayVoltage_ * 0.01f,
-           ch2ArrayCurrent_ * 0.001f, ch2BatteryVoltage_ * 0.01f, ch2UnitTemp_ * 0.01f);
+    {
+      UartGuard guard;
+      printf("Photon3: Channel 2 - ArrayVolts: %.2f V, ArrayCurrent: %.2f A, BatVolts: %.2f V, Temp: %.2f °C\n", ch2ArrayVoltage_ * 0.01f,
+             ch2ArrayCurrent_ * 0.001f, ch2BatteryVoltage_ * 0.01f, ch2UnitTemp_ * 0.01f);
+    }
 #endif
     break;
   }

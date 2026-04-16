@@ -7,7 +7,6 @@
 #include <cstddef>
 #include <cstdint>
 
-
 // Template for a fixed-size ring buffer
 template <typename T, size_t Size> class RingBuffer {
 private:

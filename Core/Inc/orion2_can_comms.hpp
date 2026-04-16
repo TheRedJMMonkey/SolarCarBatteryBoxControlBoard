@@ -26,18 +26,22 @@
  */
 class Orion2 {
 public:
-  static constexpr uint16_t DEFAULT_BASE_ADDR = 0x240;
+  static constexpr uint16_t DEFAULT_BASE_ADDR = 0x6B0;
 
   /**
-   * @brief Enum for Orion2 Message IDs (offsets from base address)
+   * @brief Enum for Orion2 Message IDs (offsets from base address, except CellVoltage)
    */
-  enum class MessageID : uint16_t { Status = 0x00 };
+  enum class MessageID : uint16_t {
+    PackMeasurements = 0x02, // 0x6B2 - Pack voltage, current, and SOC
+    PackExtended = 0x03,     // 0x6B3 - Pack capacity, power, temperature, fan speed
+    CellVoltage = 0x36       // 0x36 - Cell voltage broadcast (separate address, not an offset)
+  };
 
   /**
    * @brief Construct a new Orion2 object
    *
    * @param hfdcan Pointer to FDCAN handle
-   * @param baseAddr Base address for Orion2 messages (default 0x240)
+   * @param baseAddr Base address for Orion2 messages (default 0x6B0)
    */
   Orion2(FDCAN_HandleTypeDef *hfdcan, uint16_t baseAddr = DEFAULT_BASE_ADDR);
 
@@ -56,7 +60,34 @@ public:
    * @param id CAN message ID
    * @return true if ID is within Orion2 range
    */
-  bool isOrion2Message(uint32_t id) const { return id >= baseAddr_ && id <= baseAddr_ + static_cast<uint16_t>(Orion2::MessageID::Status); }
+  bool isOrion2Message(uint32_t id) const {
+    // Check offset-based messages (0x6B2, 0x6B3)
+    if (id >= baseAddr_ && id <= baseAddr_ + static_cast<uint16_t>(Orion2::MessageID::PackExtended)) {
+      return true;
+    }
+    // Check cell voltage message (0x36 - separate address)
+    return id == 0x36;
+  }
+
+  // Pack Measurements Getters (scaled float values)
+  float getPackCurrent() const { return packCurrent_; }         // Amperes
+  float getPackInstVoltage() const { return packInstVoltage_; } // Volts
+  float getPackOpenVoltage() const { return packOpenVoltage_; } // Volts
+  float getPackSOC() const { return packSOC_; }                 // Percent
+
+  // Pack Extended Measurements Getters (scaled float values)
+  float getPackCapacity() const { return totalPackCapacity_; } // Ampere-hours
+  float getPackPower() const { return packKWPower_; }          // Kilowatts
+  float getIntakeTemp() const { return intakeTemperature_; }   // Celsius
+  float getFanVoltage() const { return fanVoltage_; }          // Volts
+
+  // Cell Voltage Broadcast Getters
+  uint8_t getCellID() const { return cellID_; }                    // Cell ID
+  float getCellVoltage() const { return cellVoltage_; }            // Volts
+  float getCellResistance() const { return cellResistance_; }      // milliOhms
+  float getCellOpenVoltage() const { return cellOpenVoltage_; }    // Volts
+  uint8_t getCellBalancing() const { return cellBalancing_; }      // Boolean flag
+  uint8_t getChecksum() const { return checksum_; }                // CRC checksum
 
   uint16_t getBaseAddr() const { return baseAddr_; }
   HAL_StatusTypeDef getLastError() const { return lastError_; }
@@ -65,10 +96,28 @@ private:
   [[maybe_unused]] FDCAN_HandleTypeDef *hfdcan_; // Kept for potential future use
   uint16_t baseAddr_;                            // Used for message range checking
 
+  // Pack Measurements (MessageID::PackMeasurements - 0x6B2)
+  float packCurrent_ = 0.0f;     // Amperes (scaled)
+  float packInstVoltage_ = 0.0f; // Volts (scaled)
+  float packOpenVoltage_ = 0.0f; // Volts (scaled)
+  float packSOC_ = 0.0f;         // Percent (scaled)
+
+  // Pack Extended Measurements (MessageID::PackExtended - 0x6B3)
+  float totalPackCapacity_ = 0.0f; // Ampere-hours (scaled)
+  float packKWPower_ = 0.0f;       // Kilowatts (scaled)
+  float intakeTemperature_ = 0.0f; // Celsius (scaled)
+  float fanVoltage_ = 0.0f;        // Volts (scaled)
+
+  // Cell Voltage Broadcast (MessageID::CellVoltage - 0x36)
+  uint8_t cellID_ = 0;           // Cell ID (0-255)
+  float cellVoltage_ = 0.0f;     // Volts (scaled)
+  float cellResistance_ = 0.0f;  // milliOhms (scaled)
+  float cellOpenVoltage_ = 0.0f; // Volts (scaled)
+  uint8_t cellBalancing_ = 0;    // Boolean flag (0 or 1)
+  uint8_t checksum_ = 0;         // CRC checksum
+
   // Error tracking
   HAL_StatusTypeDef lastError_ = HAL_OK;
-
-  // TODO: Add measurement data members as messages are documented
 };
 
 #endif /* ORION2_CAN_COMMS_HPP */

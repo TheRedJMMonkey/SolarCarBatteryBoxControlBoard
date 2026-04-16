@@ -103,12 +103,16 @@ void Error_Handler(void);
 #define JTDI_GPIO_Port GPIOA
 #define OI_5_Pin GPIO_PIN_10
 #define OI_5_GPIO_Port GPIOC
+#define OI_5_EXTI_IRQn EXTI10_IRQn
 #define OI_4_Pin GPIO_PIN_11
 #define OI_4_GPIO_Port GPIOC
+#define OI_4_EXTI_IRQn EXTI11_IRQn
 #define OI_7_Pin GPIO_PIN_12
 #define OI_7_GPIO_Port GPIOC
+#define OI_7_EXTI_IRQn EXTI12_IRQn
 #define OI_6_Pin GPIO_PIN_2
 #define OI_6_GPIO_Port GPIOD
+#define OI_6_EXTI_IRQn EXTI2_IRQn
 #define SWO_Pin GPIO_PIN_3
 #define SWO_GPIO_Port GPIOB
 #define LIO_1_Pin GPIO_PIN_4

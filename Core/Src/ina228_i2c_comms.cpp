@@ -12,6 +12,11 @@
 
 #include "ina228_i2c_comms.hpp"
 #include "main.h"
+#include "stm32h5xx_hal_def.h"
+#include "stm32h5xx_hal_i2c.h"
+#include "uart_guard.hpp"
+#include <cstdint>
+#include <cstring>
 
 // Global pointer for interrupt handler routing
 INA228 *g_ina228Instance = nullptr;
@@ -36,7 +41,10 @@ HAL_StatusTypeDef INA228::startReadAllMeasurements() {
     lastError_ = status;
     readState_ = ReadState::Idle;
 #if INA228_DEBUG_ENABLED
-    printf("INA228: Failed to start measurement read (status=%d)\n", status);
+    {
+      UartGuard guard;
+      printf("INA228: Failed to start measurement read (status=%d)\n", status);
+    }
 #endif
   }
   return status;
@@ -55,16 +63,52 @@ HAL_StatusTypeDef INA228::reset() {
   if (status == HAL_OK) {
     HAL_Delay(10); // Wait for reset to complete
 #if INA228_DEBUG_ENABLED
-    printf("INA228: Reset successful\n");
+    {
+      UartGuard guard;
+      printf("INA228: Reset successful\n");
+    }
 #endif
   } else {
     lastError_ = status;
 #if INA228_DEBUG_ENABLED
-    printf("INA228: Reset failed (status=%d)\n", status);
+    {
+      UartGuard guard;
+      printf("INA228: Reset failed (status=%d)\n", status);
+    }
 #endif
   }
 
-  return status;
+  status = HAL_I2C_Mem_Read(hi2c_, i2cAddr_, static_cast<uint8_t>(Register::Config), I2C_MEMADD_SIZE_8BIT, rxBuffer_,
+                            RegTraits<Register::Config>::size, CONFIG_TIMEOUT_MS);
+
+  if (status == HAL_OK) {
+    uint16_t config;
+    memcpy(&config, rxBuffer_, RegTraits<Register::Config>::size);
+    if (config == 0) {
+#if INA228_DEBUG_ENABLED
+      {
+        UartGuard guard;
+        printf("INA228: Reset verified. CONFIG = 0x%04X\n", config);
+      }
+#endif
+    } else {
+#if INA228_DEBUG_ENABLED
+      {
+        UartGuard guard;
+        printf("INA228: Reset not verified. CONFIG = 0x%04X\n", config);
+      }
+#endif
+    }
+    return status;
+  } else {
+#if INA228_DEBUG_ENABLED
+    {
+      UartGuard guard;
+      printf("INA228: Reset verification failed (status=%d)\n", status);
+    }
+#endif
+    return status;
+  }
 }
 
 HAL_StatusTypeDef INA228::setADCConfig(OperatingMode mode, ConversionTime busConvTime, ConversionTime shuntConvTime, ConversionTime tempConvTime,
@@ -81,7 +125,10 @@ HAL_StatusTypeDef INA228::setADCConfig(OperatingMode mode, ConversionTime busCon
   if (status != HAL_OK) {
     lastError_ = status;
 #if INA228_DEBUG_ENABLED
-    printf("INA228: setADCConfig failed (status=%d)\n", status);
+    {
+      UartGuard guard;
+      printf("INA228: setADCConfig failed (status=%d)\n", status);
+    }
 #endif
   }
   return status;
@@ -101,7 +148,10 @@ HAL_StatusTypeDef INA228::setConfig(ADCRange adcrange) {
   if (status != HAL_OK) {
     lastError_ = status;
 #if INA228_DEBUG_ENABLED
-    printf("INA228: setConfig failed (status=%d)\n", status);
+    {
+      UartGuard guard;
+      printf("INA228: setConfig failed (status=%d)\n", status);
+    }
 #endif
   }
   return status;
@@ -124,12 +174,18 @@ HAL_StatusTypeDef INA228::setShuntCalibration(float rShunt, float maxExpectedCur
   if (status != HAL_OK) {
     lastError_ = status;
 #if INA228_DEBUG_ENABLED
-    printf("INA228: setShuntCalibration failed (status=%d)\n", status);
+    {
+      UartGuard guard;
+      printf("INA228: setShuntCalibration failed (status=%d)\n", status);
+    }
 #endif
   }
 #if INA228_DEBUG_ENABLED
   else {
-    printf("INA228: ShuntCal=0x%04X, CurrentLSB=%.9f A/bit, PowerLSB=%.6f W/bit\n", shuntCal, currentLSB_, powerLSB_);
+    {
+      UartGuard guard;
+      printf("INA228: ShuntCal=0x%04X, CurrentLSB=%.9f A/bit, PowerLSB=%.6f W/bit\n", shuntCal, currentLSB_, powerLSB_);
+    }
   }
 #endif
 
@@ -195,7 +251,10 @@ void INA228::onI2CMemRxComplete(I2C_HandleTypeDef *hi2c) {
     readState_ = ReadState::Idle;
     dataReady_ = false;
 #if INA228_DEBUG_ENABLED
-    printf("INA228: I2C error during read (state=%d)\n", static_cast<uint8_t>(readState_));
+    {
+      UartGuard guard;
+      printf("INA228: I2C error during read (state=%d)\n", static_cast<uint8_t>(readState_));
+    }
 #endif
     return;
   }
@@ -203,41 +262,105 @@ void INA228::onI2CMemRxComplete(I2C_HandleTypeDef *hi2c) {
   switch (readState_) {
   case ReadState::ReadingShuntVoltage: {
     int32_t shuntVoltageRaw = bytesToValue<Register::ShuntVoltage>(rxBuffer_);
+#if INA228_DEBUG_ENABLED
+    {
+      UartGuard guard;
+      printf("INA228: Shunt Raw=0x%08X\n", shuntVoltageRaw);
+    }
+#endif
     shuntVoltage_ = rawToShuntVoltage(shuntVoltageRaw);
     readState_ = ReadState::ReadingBusVoltage;
     processNextRead_();
+    // #if INA228_DEBUG_ENABLED
+    //     {
+    //       UartGuard guard;
+    //       printf("INA228: Read Shunt Voltage - Vshunt=%.6f\n", shuntVoltage_);
+    //     }
+    // #endif
     break;
   }
   case ReadState::ReadingBusVoltage: {
     int32_t busVoltageRaw = bytesToValue<Register::BusVoltage>(rxBuffer_);
+#if INA228_DEBUG_ENABLED
+    {
+      UartGuard guard;
+      printf("INA228: Bus Raw=0x%08X\n", busVoltageRaw);
+    }
+#endif
     busVoltage_ = rawToBusVoltage(busVoltageRaw);
     readState_ = ReadState::ReadingCurrent;
     processNextRead_();
+    // #if INA228_DEBUG_ENABLED
+    //     {
+    //       UartGuard guard;
+    //       printf("INA228: Read Bus Voltage - Vbus=%.2f\n", busVoltage_);
+    //     }
+    // #endif
     break;
   }
   case ReadState::ReadingCurrent: {
     int32_t currentRaw = bytesToValue<Register::Current>(rxBuffer_);
+#if INA228_DEBUG_ENABLED
+    {
+      UartGuard guard;
+      printf("INA228: Current Raw=0x%08X\n", currentRaw);
+    }
+#endif
     current_ = rawToCurrent(currentRaw);
     readState_ = ReadState::ReadingPower;
     processNextRead_();
+    // #if INA228_DEBUG_ENABLED
+    //     {
+    //       UartGuard guard;
+    //       printf("INA228: Read Bus Current - I=%.3f\n", current_);
+    //     }
+    // #endif
     break;
   }
   case ReadState::ReadingPower: {
     uint32_t powerRaw = bytesToValue<Register::Power>(rxBuffer_);
+#if INA228_DEBUG_ENABLED
+    {
+      UartGuard guard;
+      printf("INA228: Power Raw=0x%08X\n", powerRaw);
+    }
+#endif
     power_ = rawToPower(powerRaw);
     readState_ = ReadState::ReadingTemperature;
     processNextRead_();
+    // #if INA228_DEBUG_ENABLED
+    //     {
+    //       UartGuard guard;
+    //       printf("INA228: Read Bus Power - P=%.3f\n", power_);
+    //     }
+    // #endif
     break;
   }
   case ReadState::ReadingTemperature: {
     int16_t temperatureRaw = bytesToValue<Register::Temperature>(rxBuffer_);
-    temperature_ = rawToTemperature(temperatureRaw);
-    readState_ = ReadState::Complete;
-    dataReady_ = true;
 #if INA228_DEBUG_ENABLED
-    printf("INA228: Measurement complete - Vshunt=%.6f, Vbus=%.2f, I=%.3f, P=%.3f, Tdie=%.1f\n", shuntVoltage_, busVoltage_, current_, power_,
-           temperature_);
+    {
+      UartGuard guard;
+      printf("INA228: Temperature Raw=0x%04X\n", static_cast<uint16_t>(temperatureRaw));
+    }
 #endif
+    temperature_ = rawToTemperature(temperatureRaw);
+    // #if INA228_DEBUG_ENABLED
+    //     {
+    //       UartGuard guard;
+    //       printf("INA228: Read Temperature - Tdie=%.1f\n", temperature_);
+    //     }
+    // #endif
+    readState_ = ReadState::Idle; // Return to idle after last read
+    dataReady_ = true;
+    // #if INA228_DEBUG_ENABLED
+    //     {
+    //       UartGuard guard;
+    //       printf("INA228: Measurement complete - Vshunt=%.6f, Vbus=%.2f, I=%.3f, P=%.3f, Tdie=%.3f\n", shuntVoltage_, busVoltage_, current_,
+    //       power_,
+    //              temperature_);
+    //     }
+    // #endif
     break;
   }
   default:
@@ -269,25 +392,30 @@ float INA228::rawToCurrent(int32_t raw) const {
 float INA228::rawToPower(uint32_t raw) const { return raw * powerLSB_; }
 
 float INA228::rawToTemperature(int16_t raw) {
-  // Temperature LSB = 0.125 °C
-  return raw * 0.125f;
+  // Temperature LSB = 7.8125 m°C
+  return raw * 7.8125e-3f;
 }
 
 HAL_StatusTypeDef INA228::verifyDevicePresent() {
-  uint8_t mfgID[2];
-  HAL_StatusTypeDef status = HAL_I2C_Mem_Read(hi2c_, i2cAddr_, static_cast<uint8_t>(Register::ManufacturerID), I2C_MEMADD_SIZE_8BIT, mfgID,
-                                              sizeof(mfgID), CONFIG_TIMEOUT_MS);
+  HAL_StatusTypeDef status = HAL_I2C_Mem_Read(hi2c_, i2cAddr_, static_cast<uint8_t>(Register::ManufacturerID), I2C_MEMADD_SIZE_8BIT, rxBuffer_,
+                                              RegTraits<INA228::Register::ManufacturerID>::size, CONFIG_TIMEOUT_MS);
 
   if (status == HAL_OK) {
-    uint16_t id = (static_cast<uint16_t>(mfgID[0]) << 8) | mfgID[1];
-    if (id == 0x5449) {
+    uint16_t id = bytesToValue<INA228::Register::ManufacturerID>(rxBuffer_);
+    if (id == 0x5449) { // (id == 'TI')
 #if INA228_DEBUG_ENABLED
-      printf("INA228: Device verified - MfgID=0x%04X\n", id);
+      {
+        UartGuard guard;
+        printf("INA228: Device verified - MfgID=0x%04X\n", id);
+      }
 #endif
       return HAL_OK;
     } else {
 #if INA228_DEBUG_ENABLED
-      printf("INA228: Invalid MfgID=0x%04X (expected 0x5449)\n", id);
+      {
+        UartGuard guard;
+        printf("INA228: Invalid MfgID=0x%04X (expected 0x5449)\n", id);
+      }
 #endif
       lastError_ = HAL_ERROR;
       return HAL_ERROR;

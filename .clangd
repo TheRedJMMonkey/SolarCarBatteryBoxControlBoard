@@ -9,3 +9,5 @@ Diagnostics:
     - unknown_typename
     - unknown_typename_suggest
     - typename_requires_specqual
+Documentation:
+  CommentFormat: Doxygen
