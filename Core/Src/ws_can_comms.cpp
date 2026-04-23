@@ -19,11 +19,21 @@
 WaveSculptor::WaveSculptor(FDCAN_HandleTypeDef *hfdcan, uint16_t baseAddr, uint16_t dcuBaseAddr)
     : hfdcan_(hfdcan), baseAddr_(baseAddr), dcuBaseAddr_(dcuBaseAddr) {}
 
+void WaveSculptor::init(FDCAN_HandleTypeDef *hfdcan, uint16_t baseAddr, uint16_t dcuBaseAddr) {
+  hfdcan_ = hfdcan;
+  baseAddr_ = baseAddr;
+  dcuBaseAddr_ = dcuBaseAddr;
+}
+
 // ============================================================================
 // Drive Control Commands
 // ============================================================================
 
 HAL_StatusTypeDef WaveSculptor::sendMotorDrive(float motorCurrent, float motorRPM) {
+  if (!isInitialized()) {
+    lastError_ = HAL_ERROR;
+    return lastError_;
+  }
 #if WS_DEBUG_ENABLED
   {
     UartGuard guard;
@@ -41,6 +51,10 @@ HAL_StatusTypeDef WaveSculptor::sendMotorDrive(float motorCurrent, float motorRP
 }
 
 HAL_StatusTypeDef WaveSculptor::sendMotorPower(float busCurrent) {
+  if (!isInitialized()) {
+    lastError_ = HAL_ERROR;
+    return lastError_;
+  }
 #if WS_DEBUG_ENABLED
   {
     UartGuard guard;
@@ -57,6 +71,10 @@ HAL_StatusTypeDef WaveSculptor::sendMotorPower(float busCurrent) {
 }
 
 HAL_StatusTypeDef WaveSculptor::sendReset() {
+  if (!isInitialized()) {
+    lastError_ = HAL_ERROR;
+    return lastError_;
+  }
 #if WS_DEBUG_ENABLED
   {
     UartGuard guard;

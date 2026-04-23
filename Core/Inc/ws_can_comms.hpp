@@ -56,11 +56,11 @@ public:
   enum class DCUMessageID : uint16_t { MotorDrive = 0x01, MotorPower = 0x02, Reset = 0x02 };
 
 private:
-  FDCAN_HandleTypeDef *hfdcan_;
+  FDCAN_HandleTypeDef *hfdcan_ = nullptr;
 
   // Base addresses
-  uint16_t baseAddr_;
-  uint16_t dcuBaseAddr_;
+  uint16_t baseAddr_ = DEFAULT_BASE_ADDR;
+  uint16_t dcuBaseAddr_ = DEFAULT_DCU_BASE_ADDR;
 
   // Identification and Status Data
   uint32_t serialNumber_ = 0;
@@ -143,11 +143,24 @@ public:
   /**
    * @brief Construct a new WaveSculptor motor controller interface
    *
+   * Must call `init()` on the initialized object if initialized before the CAN peripheral
+   *
    * @param hfdcan Pointer to FDCAN handle
    * @param baseAddr Base CAN ID for measurement messages (default 0x400)
    * @param dcuBaseAddr Base CAN ID for DCU command messages (default 0x500)
    */
-  WaveSculptor(FDCAN_HandleTypeDef *hfdcan, uint16_t baseAddr = DEFAULT_BASE_ADDR, uint16_t dcuBaseAddr = DEFAULT_DCU_BASE_ADDR);
+  WaveSculptor(FDCAN_HandleTypeDef *hfdcan = nullptr, uint16_t baseAddr = DEFAULT_BASE_ADDR, uint16_t dcuBaseAddr = DEFAULT_DCU_BASE_ADDR);
+
+  /**
+   * @brief Initialize or reinitialize the CAN handle and base addresses.
+   *
+   * Only must be called if the `WaveSculptor` object is initialized before the CAN peripheral.
+   *
+   * @param hfdcan Pointer to FDCAN handle
+   * @param baseAddr Base CAN ID for measurement messages (default 0x400)
+   * @param dcuBaseAddr Base CAN ID for DCU command messages (default 0x500)
+   */
+  void init(FDCAN_HandleTypeDef *hfdcan, uint16_t baseAddr = DEFAULT_BASE_ADDR, uint16_t dcuBaseAddr = DEFAULT_DCU_BASE_ADDR);
 
   /**
    * @brief Send motor drive command (motor current and RPM setpoint)
@@ -187,6 +200,10 @@ public:
    * @return HAL_StatusTypeDef - HAL_OK if request queued successfully
    */
   template <WaveSculptor::MessageID MsgID> HAL_StatusTypeDef requestMeasurement() {
+    if (!isInitialized()) {
+      lastError_ = HAL_ERROR;
+      return lastError_;
+    }
 #if WS_DEBUG_ENABLED
     printf("WS: Requesting measurement 0x%02X\n", baseAddr_ + static_cast<uint8_t>(MsgID));
 #endif
@@ -241,6 +258,7 @@ public:
   uint16_t getBaseAddr() const { return baseAddr_; }
   uint16_t getDcuBaseAddr() const { return dcuBaseAddr_; }
   HAL_StatusTypeDef getLastError() const { return lastError_; }
+  bool isInitialized() const { return hfdcan_ != nullptr; }
 
   /**
    * @brief Check if a CAN ID is within the WaveSculptor message range
