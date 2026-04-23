@@ -123,6 +123,8 @@ volatile bool g_orionFaultFlashPulseLong = false;
 volatile uint32_t g_orionFaultFlashNextTick = 0U;
 uint32_t g_orionFaultClearMessageCount = 0U;
 
+WaveSculptor ws;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -148,6 +150,43 @@ void SystemClock_Config(void);
   return 0;
 }
 #endif
+
+/**
+ * @brief E-Stop function to turn off all contactors immediately and keep them off until exit conditions are met
+ *
+ */
+void eStopFunction() {
+#if DEBUG_MESSAGES_ENABLED
+  {
+    UartGuard guard;
+    printf("E-Stop Triggered. Set run switch to off position for 10 seconds and release E-Stop to resume.\n");
+  }
+#endif
+
+  uint32_t offDuration = 0;
+  uint32_t offStart = HAL_GetTick();
+  while (HAL_GPIO_ReadPin(OI_10_GPIO_Port, OI_10_Pin) == GPIO_PIN_RESET || offDuration < 10000) {
+    // Open all contactors
+    HAL_GPIO_WritePin(LIO_1_GPIO_Port, LIO_1_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(LIO_2_GPIO_Port, LIO_2_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(LIO_3_GPIO_Port, LIO_3_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
+
+    if (HAL_GPIO_ReadPin(OI_4_GPIO_Port, OI_4_Pin) == GPIO_PIN_SET && HAL_GPIO_ReadPin(OI_5_GPIO_Port, OI_5_Pin) == GPIO_PIN_SET) {
+      offDuration = HAL_GetTick() - offStart;
+    } else {
+      offDuration = 0;
+      offStart = HAL_GetTick();
+    }
+  }
+
+#if DEBUG_MESSAGES_ENABLED
+  {
+    UartGuard guard;
+    printf("E-Stop exited.\n");
+  }
+#endif
+}
 
 // ============================================================================
 // Functions for Switching Contactors Controlled by Orion BMS 2
@@ -439,6 +478,31 @@ int main(void) {
     Error_Handler();
   }
 
+  /* USER CODE END 2 */
+
+  /* Initialize leds */
+  BSP_LED_Init(LED_GREEN);
+
+  /* Initialize USER push-button, will be used to trigger an interrupt each time it's pressed.*/
+  BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
+
+  /* Initialize COM1 port (115200, 8 bits (7-bit data + 1 stop bit), no parity */
+  BspCOMInit.BaudRate = 115200;
+  BspCOMInit.WordLength = COM_WORDLENGTH_8B;
+  BspCOMInit.StopBits = COM_STOPBITS_1;
+  BspCOMInit.Parity = COM_PARITY_NONE;
+  BspCOMInit.HwFlowCtl = COM_HWCONTROL_NONE;
+  if (BSP_COM_Init(COM1, &BspCOMInit) != BSP_ERROR_NONE) {
+    Error_Handler();
+  }
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+
+  if (HAL_GPIO_ReadPin(OI_10_GPIO_Port, OI_10_Pin) == GPIO_PIN_RESET) {
+    eStopFunction();
+  }
+
   g_dischargeEnablePermitted = (HAL_GPIO_ReadPin(OI_1_GPIO_Port, OI_1_Pin) == GPIO_PIN_RESET);
   g_chargeEnablePermitted = (HAL_GPIO_ReadPin(OI_2_GPIO_Port, OI_2_Pin) == GPIO_PIN_RESET);
   g_multipurposeEnablePermitted = (HAL_GPIO_ReadPin(OI_3_GPIO_Port, OI_3_Pin) == GPIO_PIN_RESET);
@@ -452,29 +516,8 @@ int main(void) {
   HAL_GPIO_WritePin(HMO_2_GPIO_Port, HMO_2_Pin, static_cast<GPIO_PinState>(!g_runSwitchAsserted));
   HAL_GPIO_WritePin(HMO_1_GPIO_Port, HMO_1_Pin, static_cast<GPIO_PinState>(!g_chargeSwitchAsserted));
 
-  /* USER CODE END 2 */
-
-  /* Initialize leds */
-  BSP_LED_Init(LED_GREEN);
-
-  /* Initialize USER push-button, will be used to trigger an interrupt each time it's pressed.*/
-  BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
-
-  /* Initialize COM1 port (1152000, 8 bits (7-bit data + 1 stop bit), no parity */
-  BspCOMInit.BaudRate = 1152000;
-  BspCOMInit.WordLength = COM_WORDLENGTH_8B;
-  BspCOMInit.StopBits = COM_STOPBITS_1;
-  BspCOMInit.Parity = COM_PARITY_NONE;
-  BspCOMInit.HwFlowCtl = COM_HWCONTROL_NONE;
-  if (BSP_COM_Init(COM1, &BspCOMInit) != BSP_ERROR_NONE) {
-    Error_Handler();
-  }
-
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-
   // Initialize CAN devices
-  WaveSculptor ws(&hfdcan2, 0x400, 0x500);
+  ws.init(&hfdcan2, 0x400, 0x500);
   Photon3 photon3(&hfdcan2, 0x600);
   Orion2 orion2(&hfdcan2, 0x6B0);
 
@@ -757,11 +800,9 @@ void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin) {
     break;
 
   case OI_2_Pin: // Charge EN
-    if (HAL_GPIO_ReadPin(OI_2_GPIO_Port, OI_2_Pin) == GPIO_PIN_SET) {
-      g_chargeEnablePermitted = false;
-      HAL_GPIO_WritePin(LIO_1_GPIO_Port, LIO_1_Pin, GPIO_PIN_RESET);
-      g_contactorUpdatePending = true;
-    }
+    g_chargeEnablePermitted = false;
+    HAL_GPIO_WritePin(LIO_1_GPIO_Port, LIO_1_Pin, GPIO_PIN_RESET);
+    g_contactorUpdatePending = true;
     break;
 
   case OI_3_Pin: // Multipurpose EN
@@ -831,36 +872,9 @@ void HAL_GPIO_EXTI_Falling_Callback(uint16_t GPIO_Pin) {
     g_contactorUpdatePending = true;
     break;
 
-  case OI_2_Pin | OI_8_Pin: // Charge EN | E-Stop
-    if (HAL_GPIO_ReadPin(OI_2_GPIO_Port, OI_2_Pin) == GPIO_PIN_RESET) {
-      g_chargeEnablePermitted = true;
-      g_contactorUpdatePending = true;
-    }
-
-    if (HAL_GPIO_ReadPin(OI_8_GPIO_Port, OI_8_Pin) == GPIO_PIN_RESET) { // E-Stop triggered
-#if DEBUG_MESSAGES_ENABLED
-      {
-        UartGuard guard;
-        printf("E-Stop Triggered. Set run switch to off position for 10 seconds and release E-Stop to resume.\n");
-      }
-#endif
-      uint32_t offDuration = 0;
-      uint32_t offStart = 0;
-      while (HAL_GPIO_ReadPin(OI_8_GPIO_Port, OI_8_Pin) == GPIO_PIN_RESET || offDuration < 10000) {
-        // Open all contactors
-        HAL_GPIO_WritePin(LIO_1_GPIO_Port, LIO_1_Pin, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(LIO_2_GPIO_Port, LIO_2_Pin, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(LIO_3_GPIO_Port, LIO_3_Pin, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
-
-        if (HAL_GPIO_ReadPin(OI_4_GPIO_Port, OI_4_Pin) == GPIO_PIN_SET && HAL_GPIO_ReadPin(OI_5_GPIO_Port, OI_5_Pin) == GPIO_PIN_SET) {
-          offDuration = HAL_GetTick() - offStart;
-        } else {
-          offDuration = 0;
-          offStart = HAL_GetTick();
-        }
-      }
-    }
+  case OI_2_Pin: // Charge EN
+    g_chargeEnablePermitted = true;
+    g_contactorUpdatePending = true;
     break;
 
   case OI_3_Pin: // Multipurpose EN
@@ -896,6 +910,10 @@ void HAL_GPIO_EXTI_Falling_Callback(uint16_t GPIO_Pin) {
     // Charge contactor control switch asserted. Request sequencing for turn-on.
     g_chargeContactorSwitchAsserted = true;
     g_contactorUpdatePending = true;
+    break;
+
+  case OI_10_Pin: // E-Stop triggered
+    eStopFunction();
     break;
 
   default:
@@ -943,7 +961,10 @@ void Error_Handler(void) {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
-  printf("\n\nThere was an error\n");
+  {
+    UartGuard guard;
+    printf("\n\nThere was an error\n");
+  }
   while (1) {
   }
   /* USER CODE END Error_Handler_Debug */
