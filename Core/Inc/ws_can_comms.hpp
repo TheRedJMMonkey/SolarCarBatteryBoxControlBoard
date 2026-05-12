@@ -163,6 +163,24 @@ public:
   void init(FDCAN_HandleTypeDef *hfdcan, uint16_t baseAddr = DEFAULT_BASE_ADDR, uint16_t dcuBaseAddr = DEFAULT_DCU_BASE_ADDR);
 
   /**
+   * @brief Send the message to the DCU to enable operation
+   *
+   * When enabled, the DCU will operate normally and does not enforce a 0A target with no regen braking
+   * 
+   * @return HAL_StatusTypeDef 
+   */
+  HAL_StatusTypeDef enableDCU();
+
+  /**
+   * @brief Send the message to the DCU to disable operation
+   *
+   * When disabled, the DCU will send the commands to the motor controller for a 0A current target and no regen braking
+   * 
+   * @return HAL_StatusTypeDef 
+   */
+  HAL_StatusTypeDef disableDCU();
+
+  /**
    * @brief Send motor drive command (motor current and RPM setpoint)
    *
    * @param motorCurrent Motor current command as percentage [0-100]

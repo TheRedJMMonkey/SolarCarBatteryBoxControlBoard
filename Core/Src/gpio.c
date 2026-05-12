@@ -141,28 +141,28 @@ void MX_GPIO_Init(void)
   HAL_GPIO_Init(HMO_1_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 2, 0);
   HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 2, 0);
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI8_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI8_IRQn, 2, 0);
   HAL_NVIC_EnableIRQ(EXTI8_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI10_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI10_IRQn, 2, 0);
   HAL_NVIC_EnableIRQ(EXTI10_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI11_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI11_IRQn, 2, 0);
   HAL_NVIC_EnableIRQ(EXTI11_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI12_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI12_IRQn, 2, 0);
   HAL_NVIC_EnableIRQ(EXTI12_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI14_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI14_IRQn, 2, 0);
   HAL_NVIC_EnableIRQ(EXTI14_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI15_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI15_IRQn, 2, 0);
   HAL_NVIC_EnableIRQ(EXTI15_IRQn);
 
 }

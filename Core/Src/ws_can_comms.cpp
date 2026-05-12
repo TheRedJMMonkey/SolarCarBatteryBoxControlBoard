@@ -89,6 +89,62 @@ HAL_StatusTypeDef WaveSculptor::sendReset() {
   return lastError_;
 }
 
+HAL_StatusTypeDef WaveSculptor::enableDCU() {
+  if (!isInitialized()) {
+    lastError_ = HAL_ERROR;
+    return lastError_;
+  }
+#if WS_DEBUG_ENABLED
+  {
+    UartGuard guard;
+    printf("WS: Sending DCU Enable Command\n");
+  }
+#endif
+
+  FDCAN_TxHeaderTypeDef txHeader = {.Identifier = 0x00A, // DCU Enable/Disable message ID
+                                    .IdType = FDCAN_STANDARD_ID,
+                                    .TxFrameType = FDCAN_DATA_FRAME,
+                                    .DataLength = FDCAN_DLC_BYTES_1,
+                                    .ErrorStateIndicator = FDCAN_ESI_ACTIVE,
+                                    .BitRateSwitch = FDCAN_BRS_OFF,
+                                    .FDFormat = FDCAN_CLASSIC_CAN,
+                                    .TxEventFifoControl = FDCAN_NO_TX_EVENTS,
+                                    .MessageMarker = 0};
+
+  uint8_t txData[1] = {0xA5}; // Magic value to enable the DCU
+
+  lastError_ = HAL_FDCAN_AddMessageToTxFifoQ(hfdcan_, &txHeader, txData);
+  return lastError_;
+}
+
+HAL_StatusTypeDef WaveSculptor::disableDCU() {
+  if (!isInitialized()) {
+    lastError_ = HAL_ERROR;
+    return lastError_;
+  }
+#if WS_DEBUG_ENABLED
+  {
+    UartGuard guard;
+    printf("WS: Sending DCU Disable Command\n");
+  }
+#endif
+
+  FDCAN_TxHeaderTypeDef txHeader = {.Identifier = 0x00A, // DCU Enable/Disable message ID
+                                    .IdType = FDCAN_STANDARD_ID,
+                                    .TxFrameType = FDCAN_DATA_FRAME,
+                                    .DataLength = FDCAN_DLC_BYTES_1,
+                                    .ErrorStateIndicator = FDCAN_ESI_ACTIVE,
+                                    .BitRateSwitch = FDCAN_BRS_OFF,
+                                    .FDFormat = FDCAN_CLASSIC_CAN,
+                                    .TxEventFifoControl = FDCAN_NO_TX_EVENTS,
+                                    .MessageMarker = 0};
+
+  uint8_t txData[1] = {0x00}; // Any value other than 0xA5 on ID 0x00A will disable the DCU
+
+  lastError_ = HAL_FDCAN_AddMessageToTxFifoQ(hfdcan_, &txHeader, txData);
+  return lastError_;
+}
+
 // ============================================================================
 // Measurement Parsing
 // ============================================================================

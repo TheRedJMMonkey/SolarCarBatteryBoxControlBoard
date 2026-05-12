@@ -125,6 +125,8 @@ uint32_t g_orionFaultClearMessageCount = 0U;
 
 WaveSculptor ws;
 
+constexpr uint32_t DCU_DISABLE_DELAY = 100000;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -162,6 +164,9 @@ void eStopFunction() {
     printf("E-Stop Triggered. Set run switch to off position for 10 seconds and release E-Stop to resume.\n");
   }
 #endif
+
+  // ws.disableDCU();
+  for(uint32_t i = 0; i < DCU_DISABLE_DELAY; i++);
 
   uint32_t offDuration = 0;
   uint32_t offStart = HAL_GetTick();
@@ -227,39 +232,50 @@ static OrionFaultFlashPattern GetOrionFaultFlashPattern(uint16_t flags1, uint16_
  * - This function only performs deferred ON sequencing from main-loop context.
  */
 static void ProcessContactorTurnOnSequencing() {
-  bool dcePermitted;
-  bool cePermitted;
-  bool mpePermitted;
+  bool dischargeContactorPermitted;
+  bool chargeContactorPermitted;
+  bool sysContactorsPermitted;
 
   __disable_irq();
   // This cycle consumes the pending work flag; ISR can re-assert it at any time.
   g_contactorUpdatePending = false;
-  dcePermitted = g_dischargeEnablePermitted;
-  cePermitted = g_chargeEnablePermitted;
-  mpePermitted = g_multipurposeEnablePermitted;
+  dischargeContactorPermitted = g_dischargeEnablePermitted && g_runSwitchAsserted;
+  chargeContactorPermitted = g_chargeEnablePermitted && (g_runSwitchAsserted || g_chargeSwitchAsserted);
+  sysContactorsPermitted = g_multipurposeEnablePermitted && (g_runSwitchAsserted || g_chargeSwitchAsserted);
   __enable_irq();
 
   // Rising edge de-assertions should already switch off in ISR; this keeps state coherent.
-  if (!mpePermitted) {
+  if (!sysContactorsPermitted) {
     // Turning off the contactors is always safe, so no need to write the global state
+
+    // ws.disableDCU();
+    for(uint32_t i = 0; i < DCU_DISABLE_DELAY; i++);
+
     HAL_GPIO_WritePin(LIO_3_GPIO_Port, LIO_3_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(LIO_2_GPIO_Port, LIO_2_Pin, GPIO_PIN_RESET);
   }
-  if (!cePermitted) {
+  if (!chargeContactorPermitted) {
     // Turning off the contactors is always safe, so no need to write the global state
     HAL_GPIO_WritePin(LIO_1_GPIO_Port, LIO_1_Pin, GPIO_PIN_RESET);
   }
-  if (!dcePermitted) {
+  if (!dischargeContactorPermitted) {
     // Turning off the contactors is always safe, so no need to write the global state
+
+    // ws.disableDCU();
+    for(uint32_t i = 0; i < DCU_DISABLE_DELAY; i++);
+
     HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
   }
   // Force discharge contactor (motor) OFF if in charge mode for safety.
   // The car must not be drivable while plugged in to the charger.
   if (g_chargeSwitchAsserted) {
+    // ws.disableDCU();
+    for(uint32_t i = 0; i < DCU_DISABLE_DELAY; i++);
+
     HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
   }
 
-  const uint32_t now = HAL_GetTick();
+  uint32_t now = HAL_GetTick();
   if (static_cast<int32_t>(now - g_nextContactorOnAllowedTick) < 0) {
     g_contactorUpdatePending = true;
     return;
@@ -268,19 +284,19 @@ static void ProcessContactorTurnOnSequencing() {
   // Turn on at most one contactor per call; enforce minimum spacing globally.
   // Note: Discharge (LIO_4) and Charge (LIO_1) are gated by their respective external control switches
   // via AND logic: contactor can only turn on if both BMS permit AND external switch assert.
-  if (mpePermitted && (HAL_GPIO_ReadPin(LIO_3_GPIO_Port, LIO_3_Pin) == GPIO_PIN_RESET)) {
+  if (sysContactorsPermitted && (HAL_GPIO_ReadPin(LIO_3_GPIO_Port, LIO_3_Pin) == GPIO_PIN_RESET)) {
     // Re-read permit inside the critical section so the GPIO write cannot use stale authorization.
     __disable_irq();
     HAL_GPIO_WritePin(LIO_3_GPIO_Port, LIO_3_Pin, static_cast<GPIO_PinState>(g_multipurposeEnablePermitted)); // Switch battery (-) contactor
     __enable_irq();
     g_nextContactorOnAllowedTick = now + CONTACTOR_ON_SPACING_MS;
-  } else if (mpePermitted && (HAL_GPIO_ReadPin(LIO_2_GPIO_Port, LIO_2_Pin) == GPIO_PIN_RESET)) {
+  } else if (sysContactorsPermitted && (HAL_GPIO_ReadPin(LIO_2_GPIO_Port, LIO_2_Pin) == GPIO_PIN_RESET)) {
     // Re-read permit inside the critical section so the GPIO write cannot use stale authorization.
     __disable_irq();
     HAL_GPIO_WritePin(LIO_2_GPIO_Port, LIO_2_Pin, static_cast<GPIO_PinState>(g_multipurposeEnablePermitted)); // Switch battery (+) contactor
     __enable_irq();
     g_nextContactorOnAllowedTick = now + CONTACTOR_ON_SPACING_MS;
-  } else if (cePermitted && g_chargeContactorSwitchAsserted && (HAL_GPIO_ReadPin(LIO_1_GPIO_Port, LIO_1_Pin) == GPIO_PIN_RESET)) {
+  } else if (chargeContactorPermitted && g_chargeContactorSwitchAsserted && (HAL_GPIO_ReadPin(LIO_1_GPIO_Port, LIO_1_Pin) == GPIO_PIN_RESET)) {
     // Charge contactor (LIO_1) requires both BMS charge permit AND external charge control switch.
     // Re-read both permit and switch inside the critical section to prevent stale values.
     __disable_irq();
@@ -288,7 +304,7 @@ static void ProcessContactorTurnOnSequencing() {
     HAL_GPIO_WritePin(LIO_1_GPIO_Port, LIO_1_Pin, static_cast<GPIO_PinState>(chargeGateOpen)); // Switch solar relay
     __enable_irq();
     g_nextContactorOnAllowedTick = now + CONTACTOR_ON_SPACING_MS;
-  } else if (dcePermitted && g_dischargeContactorSwitchAsserted && !g_chargeSwitchAsserted &&
+  } else if (dischargeContactorPermitted && g_dischargeContactorSwitchAsserted && !g_chargeSwitchAsserted &&
              (HAL_GPIO_ReadPin(LIO_4_GPIO_Port, LIO_4_Pin) == GPIO_PIN_RESET)) {
     // Discharge contactor (LIO_4) requires: BMS discharge permit AND external discharge control switch
     // AND NOT in charge mode. Charge mode prevents motor operation for safety.
@@ -300,10 +316,15 @@ static void ProcessContactorTurnOnSequencing() {
     g_nextContactorOnAllowedTick = now + CONTACTOR_ON_SPACING_MS;
   }
 
+  // Enable the DCU after the system and motor contactors are closed.
+  if (HAL_GPIO_ReadPin(LIO_2_GPIO_Port, LIO_2_Pin) && HAL_GPIO_ReadPin(LIO_3_GPIO_Port, LIO_3_Pin) && HAL_GPIO_ReadPin(LIO_4_GPIO_Port, LIO_4_Pin)) {
+    // ws.enableDCU();
+  }
+
   __disable_irq();
-  dcePermitted = g_dischargeEnablePermitted;
-  cePermitted = g_chargeEnablePermitted;
-  mpePermitted = g_multipurposeEnablePermitted;
+  dischargeContactorPermitted = g_dischargeEnablePermitted && g_runSwitchAsserted;
+  chargeContactorPermitted = g_chargeEnablePermitted && (g_runSwitchAsserted || g_chargeSwitchAsserted);
+  sysContactorsPermitted = g_multipurposeEnablePermitted && (g_runSwitchAsserted || g_chargeSwitchAsserted);
   bool dischargeSwitch = g_dischargeContactorSwitchAsserted;
   bool chargeSwitch = g_chargeContactorSwitchAsserted;
   __enable_irq();
@@ -312,10 +333,10 @@ static void ProcessContactorTurnOnSequencing() {
   // Discharge is also blocked when in charge mode (OI_5 asserted) for safety.
   g_contactorUpdatePending =
       g_contactorUpdatePending ||
-      ((mpePermitted && (HAL_GPIO_ReadPin(LIO_3_GPIO_Port, LIO_3_Pin) == GPIO_PIN_RESET)) ||
-       (mpePermitted && (HAL_GPIO_ReadPin(LIO_2_GPIO_Port, LIO_2_Pin) == GPIO_PIN_RESET)) ||
-       (cePermitted && chargeSwitch && (HAL_GPIO_ReadPin(LIO_1_GPIO_Port, LIO_1_Pin) == GPIO_PIN_RESET)) ||
-       (dcePermitted && dischargeSwitch && !g_chargeSwitchAsserted && (HAL_GPIO_ReadPin(LIO_4_GPIO_Port, LIO_4_Pin) == GPIO_PIN_RESET)));
+      ((sysContactorsPermitted && (HAL_GPIO_ReadPin(LIO_3_GPIO_Port, LIO_3_Pin) == GPIO_PIN_RESET)) ||
+       (sysContactorsPermitted && (HAL_GPIO_ReadPin(LIO_2_GPIO_Port, LIO_2_Pin) == GPIO_PIN_RESET)) ||
+       (chargeContactorPermitted && chargeSwitch && (HAL_GPIO_ReadPin(LIO_1_GPIO_Port, LIO_1_Pin) == GPIO_PIN_RESET)) ||
+       (dischargeContactorPermitted && dischargeSwitch && !g_chargeSwitchAsserted && (HAL_GPIO_ReadPin(LIO_4_GPIO_Port, LIO_4_Pin) == GPIO_PIN_RESET)));
 }
 
 static void ProcessOrionFaultIndication(uint32_t now) {
@@ -344,8 +365,10 @@ static void ProcessOrionFaultIndication(uint32_t now) {
   HAL_GPIO_WritePin(LMO_1_GPIO_Port, LMO_1_Pin, GPIO_PIN_RESET);
   g_orionFaultFlashPulseOn = false;
 
-  if (g_orionFaultFlashPulsesRemaining > 0U) {
-    --g_orionFaultFlashPulsesRemaining;
+  uint8_t pulsesRemaining = g_orionFaultFlashPulsesRemaining;
+  if (pulsesRemaining > 0) {
+    --pulsesRemaining;
+    g_orionFaultFlashPulsesRemaining = pulsesRemaining;
   }
 
   if (g_orionFaultFlashPulsesRemaining == 0U) {
@@ -358,24 +381,21 @@ static void ProcessOrionFaultIndication(uint32_t now) {
 
 static void UpdateOrionFaultState(uint16_t flags1, uint16_t flags2, uint32_t now) {
   OrionFaultFlashPattern pattern = GetOrionFaultFlashPattern(flags1, flags2);
+  bool requestDcuDisable = false;
+  bool clearFault = false;
+  bool patternChanged = false;
 
   __disable_irq();
   g_orionDtcFlags1 = flags1;
   g_orionDtcFlags2 = flags2;
 
   if (pattern.pulseCount > 0U) {
-    bool patternChanged =
+    patternChanged =
         !g_orionFaultActive || (g_orionFaultFlashPatternPulseCount != pattern.pulseCount) || (g_orionFaultFlashPulseLong != pattern.longPulse);
 
+    requestDcuDisable = !g_orionFaultActive;
     g_orionFaultActive = true;
     g_orionFaultClearMessageCount = 0U;
-    if (patternChanged) {
-      g_orionFaultFlashPatternPulseCount = pattern.pulseCount;
-      g_orionFaultFlashPulsesRemaining = pattern.pulseCount;
-      g_orionFaultFlashPulseLong = pattern.longPulse;
-      g_orionFaultFlashPulseOn = false;
-      g_orionFaultFlashNextTick = now;
-    }
   } else if (g_orionFaultActive) {
     if (g_orionFaultClearMessageCount < ORION_DTC_CLEAR_DEBOUNCE_MESSAGES) {
       ++g_orionFaultClearMessageCount;
@@ -384,15 +404,34 @@ static void UpdateOrionFaultState(uint16_t flags1, uint16_t flags2, uint32_t now
     if (g_orionFaultClearMessageCount >= ORION_DTC_CLEAR_DEBOUNCE_MESSAGES) {
       g_orionFaultActive = false;
       g_orionFaultClearMessageCount = 0U;
-      HAL_GPIO_WritePin(LMO_1_GPIO_Port, LMO_1_Pin, GPIO_PIN_RESET);
-      g_orionFaultFlashPatternPulseCount = 0U;
-      g_orionFaultFlashPulsesRemaining = 0U;
-      g_orionFaultFlashPulseOn = false;
-      g_orionFaultFlashPulseLong = false;
-      g_orionFaultFlashNextTick = 0U;
+      clearFault = true;
     }
   } else {
     g_orionFaultClearMessageCount = 0U;
+  }
+
+  if (requestDcuDisable) {
+    __enable_irq();
+    // ws.disableDCU();
+    for(uint32_t i = 0; i < DCU_DISABLE_DELAY; i++);
+    __disable_irq();
+  }
+
+  if (patternChanged) {
+    g_orionFaultFlashPatternPulseCount = pattern.pulseCount;
+    g_orionFaultFlashPulsesRemaining = pattern.pulseCount;
+    g_orionFaultFlashPulseLong = pattern.longPulse;
+    g_orionFaultFlashPulseOn = false;
+    g_orionFaultFlashNextTick = now;
+  }
+
+  if (clearFault) {
+    HAL_GPIO_WritePin(LMO_1_GPIO_Port, LMO_1_Pin, GPIO_PIN_RESET);
+    g_orionFaultFlashPatternPulseCount = 0U;
+    g_orionFaultFlashPulsesRemaining = 0U;
+    g_orionFaultFlashPulseOn = false;
+    g_orionFaultFlashPulseLong = false;
+    g_orionFaultFlashNextTick = 0U;
   }
 
   g_contactorUpdatePending = true;
@@ -503,11 +542,11 @@ int main(void) {
     eStopFunction();
   }
 
+  g_runSwitchAsserted = (HAL_GPIO_ReadPin(OI_4_GPIO_Port, OI_4_Pin) == GPIO_PIN_RESET);
+  g_chargeSwitchAsserted = (HAL_GPIO_ReadPin(OI_5_GPIO_Port, OI_5_Pin) == GPIO_PIN_RESET);
   g_dischargeEnablePermitted = (HAL_GPIO_ReadPin(OI_1_GPIO_Port, OI_1_Pin) == GPIO_PIN_RESET);
   g_chargeEnablePermitted = (HAL_GPIO_ReadPin(OI_2_GPIO_Port, OI_2_Pin) == GPIO_PIN_RESET);
   g_multipurposeEnablePermitted = (HAL_GPIO_ReadPin(OI_3_GPIO_Port, OI_3_Pin) == GPIO_PIN_RESET);
-  g_runSwitchAsserted = (HAL_GPIO_ReadPin(OI_4_GPIO_Port, OI_4_Pin) == GPIO_PIN_RESET);
-  g_chargeSwitchAsserted = (HAL_GPIO_ReadPin(OI_5_GPIO_Port, OI_5_Pin) == GPIO_PIN_RESET);
   g_dischargeContactorSwitchAsserted = (HAL_GPIO_ReadPin(OI_6_GPIO_Port, OI_6_Pin) == GPIO_PIN_RESET);
   g_chargeContactorSwitchAsserted = (HAL_GPIO_ReadPin(OI_7_GPIO_Port, OI_7_Pin) == GPIO_PIN_RESET);
   g_nextContactorOnAllowedTick = HAL_GetTick();
@@ -795,6 +834,10 @@ void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin) {
   switch (GPIO_Pin) {
   case OI_1_Pin: // Discharge EN
     g_dischargeEnablePermitted = false;
+
+    // ws.disableDCU();
+    for(uint32_t i = 0; i < DCU_DISABLE_DELAY; i++);
+
     HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
     g_contactorUpdatePending = true;
     break;
@@ -807,6 +850,10 @@ void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin) {
 
   case OI_3_Pin: // Multipurpose EN
     g_multipurposeEnablePermitted = false;
+
+    // ws.disableDCU();
+    for(uint32_t i = 0; i < DCU_DISABLE_DELAY; i++);
+
     HAL_GPIO_WritePin(LIO_3_GPIO_Port, LIO_3_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(LIO_2_GPIO_Port, LIO_2_Pin, GPIO_PIN_RESET);
     g_contactorUpdatePending = true;
@@ -836,6 +883,10 @@ void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin) {
   case OI_6_Pin: // Discharge Contactor Enable
     // Discharge contactor control switch de-asserted. Force contactor OFF immediately.
     g_dischargeContactorSwitchAsserted = false;
+
+    // ws.disableDCU();
+    for(uint32_t i = 0; i < DCU_DISABLE_DELAY; i++);
+
     HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
     g_contactorUpdatePending = true;
     break;
@@ -894,6 +945,10 @@ void HAL_GPIO_EXTI_Falling_Callback(uint16_t GPIO_Pin) {
     // Charge state switch asserted (Charge mode): both Ready Power and Charge Power on.
     // Also force discharge contactor off.
     g_chargeSwitchAsserted = true;
+
+    // ws.disableDCU();
+    for(uint32_t i = 0; i < DCU_DISABLE_DELAY; i++);
+
     HAL_GPIO_WritePin(HMO_1_GPIO_Port, HMO_1_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(HMO_2_GPIO_Port, HMO_2_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
