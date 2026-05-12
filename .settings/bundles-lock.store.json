@@ -167,31 +167,28 @@
     },
     {
       "name": "st-arm-clang",
-      "version": "21.1.1+st.6",
+      "version": "21.1.1+st.7",
       "platform": "aarch64-darwin",
       "selected_by": [
         {
           "name": "st-arm-clang",
+          "version": "21.1.1+st.7"
+        },
+        {
+          "name": "st-arm-clang",
           "version": ">=21.1.1+st.1 <21.1.1+st.99999"
         }
       ]
     },
     {
       "name": "st-arm-clang",
-      "version": "21.1.1+st.6",
+      "version": "21.1.1+st.7",
       "platform": "x86_64-darwin",
       "selected_by": [
         {
           "name": "st-arm-clang",
-          "version": ">=21.1.1+st.1 <21.1.1+st.99999"
-        }
-      ]
-    },
-    {
-      "name": "st-arm-clang",
-      "version": "21.1.1+st.6",
-      "platform": "x86_64-linux",
-      "selected_by": [
+          "version": "21.1.1+st.7"
+        },
         {
           "name": "st-arm-clang",
           "version": ">=21.1.1+st.1 <21.1.1+st.99999"
@@ -200,9 +197,28 @@
     },
     {
       "name": "st-arm-clang",
-      "version": "21.1.1+st.6",
+      "version": "21.1.1+st.7",
+      "platform": "x86_64-linux",
+      "selected_by": [
+        {
+          "name": "st-arm-clang",
+          "version": "21.1.1+st.7"
+        },
+        {
+          "name": "st-arm-clang",
+          "version": ">=21.1.1+st.1 <21.1.1+st.99999"
+        }
+      ]
+    },
+    {
+      "name": "st-arm-clang",
+      "version": "21.1.1+st.7",
       "platform": "x86_64-windows",
       "selected_by": [
+        {
+          "name": "st-arm-clang",
+          "version": "21.1.1+st.7"
+        },
         {
           "name": "st-arm-clang",
           "version": ">=21.1.1+st.1 <21.1.1+st.99999"

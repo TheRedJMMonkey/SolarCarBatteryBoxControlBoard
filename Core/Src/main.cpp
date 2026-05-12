@@ -173,6 +173,7 @@ void eStopFunction() {
   while (HAL_GPIO_ReadPin(OI_10_GPIO_Port, OI_10_Pin) == GPIO_PIN_RESET || offDuration < 10000) {
     // Open all contactors
     HAL_GPIO_WritePin(LIO_1_GPIO_Port, LIO_1_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(LMO_2_GPIO_Port, LMO_2_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(LIO_2_GPIO_Port, LIO_2_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(LIO_3_GPIO_Port, LIO_3_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
@@ -257,6 +258,7 @@ static void ProcessContactorTurnOnSequencing() {
   if (!chargeContactorPermitted) {
     // Turning off the contactors is always safe, so no need to write the global state
     HAL_GPIO_WritePin(LIO_1_GPIO_Port, LIO_1_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(LMO_2_GPIO_Port, LMO_2_Pin, GPIO_PIN_RESET);
   }
   if (!dischargeContactorPermitted) {
     // Turning off the contactors is always safe, so no need to write the global state
@@ -302,6 +304,7 @@ static void ProcessContactorTurnOnSequencing() {
     __disable_irq();
     bool chargeGateOpen = g_chargeEnablePermitted && g_chargeContactorSwitchAsserted;
     HAL_GPIO_WritePin(LIO_1_GPIO_Port, LIO_1_Pin, static_cast<GPIO_PinState>(chargeGateOpen)); // Switch solar relay
+    HAL_GPIO_WritePin(LMO_2_GPIO_Port, LMO_2_Pin, static_cast<GPIO_PinState>(chargeGateOpen)); // Switch motor relay
     __enable_irq();
     g_nextContactorOnAllowedTick = now + CONTACTOR_ON_SPACING_MS;
   } else if (dischargeContactorPermitted && g_dischargeContactorSwitchAsserted && !g_chargeSwitchAsserted &&
@@ -342,6 +345,7 @@ static void ProcessContactorTurnOnSequencing() {
 static void ProcessOrionFaultIndication(uint32_t now) {
   // Keep all contactors open while the BMS reports a fault.
   HAL_GPIO_WritePin(LIO_1_GPIO_Port, LIO_1_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LMO_2_GPIO_Port, LMO_2_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(LIO_2_GPIO_Port, LIO_2_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(LIO_3_GPIO_Port, LIO_3_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
@@ -845,6 +849,7 @@ void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin) {
   case OI_2_Pin: // Charge EN
     g_chargeEnablePermitted = false;
     HAL_GPIO_WritePin(LIO_1_GPIO_Port, LIO_1_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(LMO_2_GPIO_Port, LMO_2_Pin, GPIO_PIN_RESET);
     g_contactorUpdatePending = true;
     break;
 
@@ -895,6 +900,7 @@ void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin) {
     // Charge contactor control switch de-asserted. Force contactor OFF immediately.
     g_chargeContactorSwitchAsserted = false;
     HAL_GPIO_WritePin(LIO_1_GPIO_Port, LIO_1_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(LMO_2_GPIO_Port, LMO_2_Pin, GPIO_PIN_RESET);
     g_contactorUpdatePending = true;
     break;
 
