@@ -166,7 +166,8 @@ void eStopFunction() {
 #endif
 
   // ws.disableDCU();
-  for(uint32_t i = 0; i < DCU_DISABLE_DELAY; i++);
+  for (uint32_t i = 0; i < DCU_DISABLE_DELAY; i++)
+    ;
 
   uint32_t offDuration = 0;
   uint32_t offStart = HAL_GetTick();
@@ -177,6 +178,9 @@ void eStopFunction() {
     HAL_GPIO_WritePin(LIO_2_GPIO_Port, LIO_2_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(LIO_3_GPIO_Port, LIO_3_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
+
+    // Keep fans on
+    HAL_GPIO_WritePin(LMO_3_GPIO_Port, LMO_3_Pin, GPIO_PIN_SET);
 
     if (HAL_GPIO_ReadPin(OI_4_GPIO_Port, OI_4_Pin) == GPIO_PIN_SET && HAL_GPIO_ReadPin(OI_5_GPIO_Port, OI_5_Pin) == GPIO_PIN_SET) {
       offDuration = HAL_GetTick() - offStart;
@@ -250,7 +254,8 @@ static void ProcessContactorTurnOnSequencing() {
     // Turning off the contactors is always safe, so no need to write the global state
 
     // ws.disableDCU();
-    for(uint32_t i = 0; i < DCU_DISABLE_DELAY; i++);
+    for (uint32_t i = 0; i < DCU_DISABLE_DELAY; i++)
+      ;
 
     HAL_GPIO_WritePin(LIO_3_GPIO_Port, LIO_3_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(LIO_2_GPIO_Port, LIO_2_Pin, GPIO_PIN_RESET);
@@ -264,7 +269,8 @@ static void ProcessContactorTurnOnSequencing() {
     // Turning off the contactors is always safe, so no need to write the global state
 
     // ws.disableDCU();
-    for(uint32_t i = 0; i < DCU_DISABLE_DELAY; i++);
+    for (uint32_t i = 0; i < DCU_DISABLE_DELAY; i++)
+      ;
 
     HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
   }
@@ -272,7 +278,8 @@ static void ProcessContactorTurnOnSequencing() {
   // The car must not be drivable while plugged in to the charger.
   if (g_chargeSwitchAsserted) {
     // ws.disableDCU();
-    for(uint32_t i = 0; i < DCU_DISABLE_DELAY; i++);
+    for (uint32_t i = 0; i < DCU_DISABLE_DELAY; i++)
+      ;
 
     HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
   }
@@ -319,6 +326,13 @@ static void ProcessContactorTurnOnSequencing() {
     g_nextContactorOnAllowedTick = now + CONTACTOR_ON_SPACING_MS;
   }
 
+  // Turn on fans when both system contactors are closed or if a BMS fault is active
+  if ((HAL_GPIO_ReadPin(LIO_2_GPIO_Port, LIO_2_Pin) && HAL_GPIO_ReadPin(LIO_3_GPIO_Port, LIO_3_Pin)) || g_orionFaultActive) {
+    HAL_GPIO_WritePin(LMO_3_GPIO_Port, LMO_3_Pin, GPIO_PIN_SET);
+  } else {
+    HAL_GPIO_WritePin(LMO_3_GPIO_Port, LMO_3_Pin, GPIO_PIN_RESET);
+  }
+
   // Enable the DCU after the system and motor contactors are closed.
   if (HAL_GPIO_ReadPin(LIO_2_GPIO_Port, LIO_2_Pin) && HAL_GPIO_ReadPin(LIO_3_GPIO_Port, LIO_3_Pin) && HAL_GPIO_ReadPin(LIO_4_GPIO_Port, LIO_4_Pin)) {
     // ws.enableDCU();
@@ -335,11 +349,11 @@ static void ProcessContactorTurnOnSequencing() {
   // Note: Charge and discharge contactors now include switch gating in the condition.
   // Discharge is also blocked when in charge mode (OI_5 asserted) for safety.
   g_contactorUpdatePending =
-      g_contactorUpdatePending ||
-      ((sysContactorsPermitted && (HAL_GPIO_ReadPin(LIO_3_GPIO_Port, LIO_3_Pin) == GPIO_PIN_RESET)) ||
-       (sysContactorsPermitted && (HAL_GPIO_ReadPin(LIO_2_GPIO_Port, LIO_2_Pin) == GPIO_PIN_RESET)) ||
-       (chargeContactorPermitted && chargeSwitch && (HAL_GPIO_ReadPin(LIO_1_GPIO_Port, LIO_1_Pin) == GPIO_PIN_RESET)) ||
-       (dischargeContactorPermitted && dischargeSwitch && !g_chargeSwitchAsserted && (HAL_GPIO_ReadPin(LIO_4_GPIO_Port, LIO_4_Pin) == GPIO_PIN_RESET)));
+      g_contactorUpdatePending || ((sysContactorsPermitted && (HAL_GPIO_ReadPin(LIO_3_GPIO_Port, LIO_3_Pin) == GPIO_PIN_RESET)) ||
+                                   (sysContactorsPermitted && (HAL_GPIO_ReadPin(LIO_2_GPIO_Port, LIO_2_Pin) == GPIO_PIN_RESET)) ||
+                                   (chargeContactorPermitted && chargeSwitch && (HAL_GPIO_ReadPin(LIO_1_GPIO_Port, LIO_1_Pin) == GPIO_PIN_RESET)) ||
+                                   (dischargeContactorPermitted && dischargeSwitch && !g_chargeSwitchAsserted &&
+                                    (HAL_GPIO_ReadPin(LIO_4_GPIO_Port, LIO_4_Pin) == GPIO_PIN_RESET)));
 }
 
 static void ProcessOrionFaultIndication(uint32_t now) {
@@ -349,7 +363,9 @@ static void ProcessOrionFaultIndication(uint32_t now) {
   HAL_GPIO_WritePin(LIO_2_GPIO_Port, LIO_2_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(LIO_3_GPIO_Port, LIO_3_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(LMO_3_GPIO_Port, LMO_2_Pin, GPIO_PIN_SET); // for Fans
+
+  // Keep fans on during fault
+  HAL_GPIO_WritePin(LMO_3_GPIO_Port, LMO_2_Pin, GPIO_PIN_SET);
 
   if (!g_orionFaultActive || g_orionFaultFlashPatternPulseCount == 0U) {
     HAL_GPIO_WritePin(LMO_1_GPIO_Port, LMO_1_Pin, GPIO_PIN_RESET);
@@ -418,7 +434,8 @@ static void UpdateOrionFaultState(uint16_t flags1, uint16_t flags2, uint32_t now
   if (requestDcuDisable) {
     __enable_irq();
     // ws.disableDCU();
-    for(uint32_t i = 0; i < DCU_DISABLE_DELAY; i++);
+    for (uint32_t i = 0; i < DCU_DISABLE_DELAY; i++)
+      ;
     __disable_irq();
   }
 
@@ -545,7 +562,6 @@ int main(void) {
 
   if (HAL_GPIO_ReadPin(OI_10_GPIO_Port, OI_10_Pin) == GPIO_PIN_RESET) {
     eStopFunction();
-    HAL_GPIO_WritePin(LMO_3_GPIO_Port, LMO_3_Pin, GPIO_PIN_SET); // for Fans
   }
 
   g_runSwitchAsserted = (HAL_GPIO_ReadPin(OI_4_GPIO_Port, OI_4_Pin) == GPIO_PIN_RESET);
@@ -580,8 +596,8 @@ int main(void) {
 
   pwrMonitor.verifyDevicePresent();
 
-  uint32_t now, lastADCRead, lastPwrMonitorRead;
-  lastADCRead = lastPwrMonitorRead = 0;
+  uint32_t now, lastADCRead, lastPwrMonitorRead, lastAliveBlink;
+  lastADCRead = lastPwrMonitorRead = lastAliveBlink = 0;
 
   while (1) {
     now = HAL_GetTick();
@@ -592,13 +608,14 @@ int main(void) {
       if (g_contactorUpdatePending) {
         // Run deferred sequencing in main-loop context; ISR handles immediate shutoff.
         ProcessContactorTurnOnSequencing();
-        HAL_GPIO_WritePin(LMO_3_GPIO_Port, LMO_3_Pin, GPIO_PIN_SET); // for Fans
       }
       HAL_GPIO_WritePin(LMO_1_GPIO_Port, LMO_1_Pin, GPIO_PIN_RESET);
     }
 
-    // Blink to show alive
-    BSP_LED_Toggle(LED_GREEN);
+    if (lastAliveBlink - now >= 500) {
+      // Blink to show alive
+      BSP_LED_Toggle(LED_GREEN);
+    }
 
     if (now - lastADCRead >= 3000) {
       lastADCRead = now;
@@ -843,7 +860,8 @@ void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin) {
     g_dischargeEnablePermitted = false;
 
     // ws.disableDCU();
-    for(uint32_t i = 0; i < DCU_DISABLE_DELAY; i++);
+    for (uint32_t i = 0; i < DCU_DISABLE_DELAY; i++)
+      ;
 
     HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
     g_contactorUpdatePending = true;
@@ -860,7 +878,8 @@ void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin) {
     g_multipurposeEnablePermitted = false;
 
     // ws.disableDCU();
-    for(uint32_t i = 0; i < DCU_DISABLE_DELAY; i++);
+    for (uint32_t i = 0; i < DCU_DISABLE_DELAY; i++)
+      ;
 
     HAL_GPIO_WritePin(LIO_3_GPIO_Port, LIO_3_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(LIO_2_GPIO_Port, LIO_2_Pin, GPIO_PIN_RESET);
@@ -893,7 +912,8 @@ void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin) {
     g_dischargeContactorSwitchAsserted = false;
 
     // ws.disableDCU();
-    for(uint32_t i = 0; i < DCU_DISABLE_DELAY; i++);
+    for (uint32_t i = 0; i < DCU_DISABLE_DELAY; i++)
+      ;
 
     HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
     g_contactorUpdatePending = true;
@@ -956,7 +976,8 @@ void HAL_GPIO_EXTI_Falling_Callback(uint16_t GPIO_Pin) {
     g_chargeSwitchAsserted = true;
 
     // ws.disableDCU();
-    for(uint32_t i = 0; i < DCU_DISABLE_DELAY; i++);
+    for (uint32_t i = 0; i < DCU_DISABLE_DELAY; i++)
+      ;
 
     HAL_GPIO_WritePin(HMO_1_GPIO_Port, HMO_1_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(HMO_2_GPIO_Port, HMO_2_Pin, GPIO_PIN_RESET);
