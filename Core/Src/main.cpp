@@ -620,7 +620,7 @@ int main(void) {
       HAL_GPIO_WritePin(LMO_1_GPIO_Port, LMO_1_Pin, GPIO_PIN_RESET);
     }
 
-    if (lastAliveBlink - now >= 500) {
+    if (lastAliveBlink - now >= 750) {
       // Blink to show alive
       BSP_LED_Toggle(LED_GREEN);
       lastAliveBlink = now;
