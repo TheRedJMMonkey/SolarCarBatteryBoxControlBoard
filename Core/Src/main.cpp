@@ -169,8 +169,9 @@ void eStopFunction() {
   for (uint32_t i = 0; i < DCU_DISABLE_DELAY; i++)
     ;
 
-  uint32_t offDuration = 0;
+  uint32_t offDuration, lastFlash = 0;
   uint32_t offStart = HAL_GetTick();
+  uint32_t now = HAL_GetTick();
   while (HAL_GPIO_ReadPin(OI_10_GPIO_Port, OI_10_Pin) == GPIO_PIN_RESET || offDuration < 10000) {
     // Open all contactors
     HAL_GPIO_WritePin(LIO_1_GPIO_Port, LIO_1_Pin, GPIO_PIN_RESET);
@@ -188,6 +189,13 @@ void eStopFunction() {
       offDuration = 0;
       offStart = HAL_GetTick();
     }
+
+    if (now - lastFlash >= 250) {
+      HAL_GPIO_TogglePin(LMO_1_GPIO_Port, LMO_1_Pin);
+      lastFlash = now;
+    }
+
+    now = HAL_GetTick();
   }
 
 #if DEBUG_MESSAGES_ENABLED
@@ -615,6 +623,7 @@ int main(void) {
     if (lastAliveBlink - now >= 500) {
       // Blink to show alive
       BSP_LED_Toggle(LED_GREEN);
+      lastAliveBlink = now;
     }
 
     if (now - lastADCRead >= 3000) {
