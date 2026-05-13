@@ -349,6 +349,7 @@ static void ProcessOrionFaultIndication(uint32_t now) {
   HAL_GPIO_WritePin(LIO_2_GPIO_Port, LIO_2_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(LIO_3_GPIO_Port, LIO_3_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(LIO_4_GPIO_Port, LIO_4_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LMO_3_GPIO_Port, LMO_2_Pin, GPIO_PIN_SET); // for Fans
 
   if (!g_orionFaultActive || g_orionFaultFlashPatternPulseCount == 0U) {
     HAL_GPIO_WritePin(LMO_1_GPIO_Port, LMO_1_Pin, GPIO_PIN_RESET);
@@ -544,6 +545,7 @@ int main(void) {
 
   if (HAL_GPIO_ReadPin(OI_10_GPIO_Port, OI_10_Pin) == GPIO_PIN_RESET) {
     eStopFunction();
+    HAL_GPIO_WritePin(LMO_3_GPIO_Port, LMO_3_Pin, GPIO_PIN_SET); // for Fans
   }
 
   g_runSwitchAsserted = (HAL_GPIO_ReadPin(OI_4_GPIO_Port, OI_4_Pin) == GPIO_PIN_RESET);
@@ -590,6 +592,7 @@ int main(void) {
       if (g_contactorUpdatePending) {
         // Run deferred sequencing in main-loop context; ISR handles immediate shutoff.
         ProcessContactorTurnOnSequencing();
+        HAL_GPIO_WritePin(LMO_3_GPIO_Port, LMO_3_Pin, GPIO_PIN_SET); // for Fans
       }
       HAL_GPIO_WritePin(LMO_1_GPIO_Port, LMO_1_Pin, GPIO_PIN_RESET);
     }
